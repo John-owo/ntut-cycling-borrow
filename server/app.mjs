@@ -1,0 +1,61 @@
+import http from 'node:http';
+import { DatabaseSync } from 'node:sqlite';
+import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+
+const hash = value => createHash('sha256').update(value).digest('hex');
+const passwordHash = (password, salt) => scryptSync(password, salt, 64).toString('hex');
+const fail = (status, message) => { const e = new Error(message); e.status = status; throw e; };
+const text = (v, max, label) => { if (typeof v !== 'string' || !v.trim() || v.trim().length > max || /[\x00-\x1f]/.test(v)) fail(400, `${label}格式不正確`); return v.trim(); };
+const tokenCheck = token => { if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) fail(400, '查詢碼格式不正確'); return token; };
+const exact = (body, keys) => { if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !keys.includes(k))) fail(400, '請求欄位不正確'); };
+
+export function createApp({ dbPath = resolve('data/bikes.sqlite'), origins = [], publicDir = resolve('public'), rateLimit = 120 } = {}) {
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+    CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1), total INTEGER, contactUrl TEXT NOT NULL DEFAULT '');
+    INSERT OR IGNORE INTO settings(id) VALUES(1);
+    CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY AUTOINCREMENT, studentId TEXT NOT NULL, name TEXT NOT NULL, contactType TEXT NOT NULL, contact TEXT NOT NULL, tokenHash TEXT UNIQUE NOT NULL, status TEXT NOT NULL CHECK(status IN ('waiting','borrowed','returned','cancelled')), createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, bikeNote TEXT NOT NULL DEFAULT '');
+    CREATE UNIQUE INDEX IF NOT EXISTS active_student ON records(studentId) WHERE status IN ('waiting','borrowed');
+    CREATE TABLE IF NOT EXISTS admins(username TEXT PRIMARY KEY, salt TEXT NOT NULL, passwordHash TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sessions(tokenHash TEXT PRIMARY KEY, username TEXT NOT NULL REFERENCES admins(username), expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, recordId INTEGER, at TEXT NOT NULL, details TEXT NOT NULL);
+  `);
+  const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result; } catch(e) { db.exec('ROLLBACK'); throw e; } };
+  const settings = () => db.prepare('SELECT total,contactUrl FROM settings WHERE id=1').get();
+  const summary = () => { const s = settings(); const borrowed = db.prepare("SELECT COUNT(*) n FROM records WHERE status='borrowed'").get().n; const waiting = db.prepare("SELECT COUNT(*) n FROM records WHERE status='waiting'").get().n; return {...s, borrowed, available: s.total === null ? null : s.total - borrowed, waiting, updatedAt: new Date().toISOString()}; };
+  const decorate = (r,s) => { if(!r) return null; const {tokenHash,...safe} = r; const position = r.status === 'waiting' ? db.prepare("SELECT COUNT(*) n FROM records WHERE status='waiting' AND id<=?").get(r.id).n : null; return {...safe,position,standby: position === null || s.available === null ? null : Math.max(0,position-s.available)}; };
+  const audit = (actor,action,id,details={}) => db.prepare('INSERT INTO audit(actor,action,recordId,at,details) VALUES(?,?,?,?,?)').run(actor,action,id,new Date().toISOString(),JSON.stringify(details));
+  function addAdmin(username,password) { username=text(username,60,'帳號'); if(typeof password!=='string'||password.length<12||password.length>256) fail(400,'管理密碼需為 12 到 256 字元'); const salt=randomBytes(16).toString('hex'); db.prepare('INSERT INTO admins VALUES(?,?,?)').run(username,salt,passwordHash(password,salt)); }
+  const buckets = new Map();
+  const server = http.createServer(async (req,res) => {
+    res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','no-referrer'); res.setHeader('X-Frame-Options','DENY');
+    res.setHeader('Content-Security-Policy',"default-src 'self'; connect-src 'self' https: http://127.0.0.1:*; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'");
+    const send = (status,data) => {res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
+    try {
+      const origin=req.headers.origin;
+      if(origin) {const own=`http://${req.headers.host}`; if(!origins.includes(origin)&&origin!==own) fail(403,'來源未獲允許');res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');}
+      if(req.method==='OPTIONS'){res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');res.writeHead(204);res.end();return;}
+      const path = new URL(req.url,'http://localhost').pathname;
+      if(!path.startsWith('/api/')) { const files={'/':'index.html','/index.html':'index.html','/admin.html':'admin.html','/app.js':'app.js','/admin.js':'admin.js','/api.js':'api.js','/style.css':'style.css','/styles.css':'styles.css','/config.js':'config.js','/favicon.svg':'favicon.svg'}; const file=files[path]; if(req.method!=='GET'||!file) fail(404,'找不到頁面'); let contents; try{contents=readFileSync(resolve(publicDir,file));}catch{fail(404,'找不到頁面');}res.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':file.endsWith('.svg')?'image/svg+xml':'text/javascript; charset=utf-8'});res.end(contents);return; }
+      const key=`${req.socket.remoteAddress}:${path}`; const now=Date.now(); let bucket=buckets.get(key);if(!bucket||now-bucket.start>60000){bucket={start:now,n:0};buckets.set(key,bucket);}if(++bucket.n>rateLimit) fail(429,'操作過於頻繁，請稍後再試');if(buckets.size>10000) for(const [k,v] of buckets) if(now-v.start>60000)buckets.delete(k);
+      let body={}; if(req.method==='POST'){if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))fail(415,'請使用 JSON');let raw=''; for await (const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>8192)fail(413,'資料過大');}try{body=JSON.parse(raw);}catch{fail(400,'JSON 格式不正確');}}
+      let actor;
+      if(path.startsWith('/api/admin/')&&path!=='/api/admin/login'){const auth=req.headers.authorization||'';if(!/^Bearer [a-f0-9]{64}$/.test(auth))fail(401,'請先登入');const session=db.prepare('SELECT username FROM sessions WHERE tokenHash=? AND expires>?').get(hash(auth.slice(7)),now);if(!session)fail(401,'登入已失效，請重新登入');actor=session.username;}
+      let result;
+      if(req.method==='GET'&&path==='/api/summary') result=transaction(summary);
+      else if(req.method==='POST'&&path==='/api/register') {exact(body,['studentId','name','contactType','contact','token']);const studentId=text(body.studentId,30,'學號').toUpperCase();if(!/^[a-zA-Z0-9-]+$/.test(studentId))fail(400,'學號格式不正確');const name=text(body.name,80,'姓名'),contactType=text(body.contactType,30,'聯絡方式'),contact=text(body.contact,200,'聯絡資訊');if(!['phone','line','instagram'].includes(contactType))fail(400,'聯絡方式格式不正確');const tokenHash=hash(tokenCheck(body.token));result=transaction(()=>{const s=summary();const old=db.prepare('SELECT * FROM records WHERE tokenHash=?').get(tokenHash);if(old){if(old.studentId!==studentId||old.name!==name||old.contactType!==contactType||old.contact!==contact)fail(409,'查詢碼已使用');return {record:decorate(old,s),summary:s};}if(s.total===null)fail(409,'幹部尚未設定社車總數');if(db.prepare("SELECT id FROM records WHERE studentId=? AND status IN ('waiting','borrowed')").get(studentId))fail(409,'此學號已有有效登記或借用；請使用原查詢碼或聯絡幹部');const at=new Date().toISOString();const id=db.prepare("INSERT INTO records(studentId,name,contactType,contact,tokenHash,status,createdAt,updatedAt) VALUES(?,?,?,?,?,'waiting',?,?)").run(studentId,name,contactType,contact,tokenHash,at,at).lastInsertRowid;const next=summary();return {record:decorate(db.prepare('SELECT * FROM records WHERE id=?').get(id),next),summary:next};});}
+      else if(req.method==='POST'&&path==='/api/me'){exact(body,['token']);result=transaction(()=>{const s=summary();const r=db.prepare('SELECT * FROM records WHERE tokenHash=?').get(hash(tokenCheck(body.token)));if(!r)fail(404,'查無登記，請確認查詢碼');return {record:decorate(r,s),summary:s};});}
+      else if(req.method==='POST'&&path==='/api/admin/login'){exact(body,['username','password']);const username=text(body.username,60,'帳號');if(typeof body.password!=='string'||body.password.length>256)fail(400,'密碼格式不正確');const admin=db.prepare('SELECT * FROM admins WHERE username=?').get(username);const calculated=scryptSync(body.password,admin?.salt||'dummy-salt',64);if(!admin||!timingSafeEqual(calculated,Buffer.from(admin.passwordHash,'hex')))fail(401,'帳號或密碼不正確');const token=randomBytes(32).toString('hex');const expires=now+8*60*60*1000;db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hash(token),username,expires);result={token,username,expires};}
+      else if(req.method==='POST'&&path==='/api/admin/logout'){exact(body,[]);db.prepare('DELETE FROM sessions WHERE tokenHash=?').run(hash(req.headers.authorization.slice(7)));result={ok:true};}
+      else if(req.method==='GET'&&path==='/api/admin/records') result=transaction(()=>{const s=summary();return {summary:s,records:db.prepare('SELECT * FROM records ORDER BY id').all().map(r=>decorate(r,s)),audit:db.prepare('SELECT * FROM audit ORDER BY id DESC').all()};});
+      else if(req.method==='POST'&&path==='/api/admin/settings'){exact(body,['total','contactUrl']);if(!Number.isSafeInteger(body.total)||body.total<0||body.total>10000)fail(400,'總車數格式不正確');if(typeof body.contactUrl!=='string'||body.contactUrl.length>500)fail(400,'聯絡連結格式不正確');if(body.contactUrl){let u;try{u=new URL(body.contactUrl);}catch{fail(400,'聯絡連結格式不正確');}if(u.protocol!=='https:')fail(400,'聯絡連結需為 HTTPS');}result=transaction(()=>{if(body.total<summary().borrowed)fail(409,'總車數不可低於已借出數量');db.prepare('UPDATE settings SET total=?,contactUrl=? WHERE id=1').run(body.total,body.contactUrl);audit(actor,'settings',null,body);return {summary:summary()};});}
+      else if(req.method==='POST'&&path==='/api/admin/action'){exact(body,['id','action','bikeNote']);if(!Number.isSafeInteger(body.id)||body.id<1||!['lend','return','cancel'].includes(body.action))fail(400,'操作格式不正確');if(body.bikeNote!==undefined&&(typeof body.bikeNote!=='string'||body.bikeNote.length>500))fail(400,'車號／備註過長');result=transaction(()=>{const r=db.prepare('SELECT * FROM records WHERE id=?').get(body.id);if(!r)fail(404,'查無紀錄');const target={lend:'borrowed',return:'returned',cancel:'cancelled'}[body.action];if(r.status===target)return {record:decorate(r,summary()),summary:summary()};if((body.action==='lend'&&r.status!=='waiting')||(body.action==='return'&&r.status!=='borrowed')||(body.action==='cancel'&&r.status!=='waiting'))fail(409,'目前狀態不允許此操作');if(body.action==='lend'&&(summary().available??0)<1)fail(409,'目前沒有尚未借出的車輛');db.prepare('UPDATE records SET status=?,updatedAt=?,bikeNote=? WHERE id=?').run(target,new Date().toISOString(),body.bikeNote??r.bikeNote,r.id);audit(actor,body.action,r.id,{bikeNote:body.bikeNote??r.bikeNote});const s=summary();return {record:decorate(db.prepare('SELECT * FROM records WHERE id=?').get(r.id),s),summary:s};});}
+      else fail(404,'找不到 API');
+      send(200,result);
+    }catch(e){send(e.status||500,{error:e.status?e.message:'伺服器操作失敗，請稍後再試'});}
+  });
+  return {server,db,addAdmin,close:async()=>{if(server.listening)await new Promise(r=>server.close(r));db.close();}};
+}

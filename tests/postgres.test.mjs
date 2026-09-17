@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+
+test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inventory',async()=>{
+ const db=new PGlite();
+ const president='00000000-0000-4000-8000-000000000001';
+ const vice='00000000-0000-4000-8000-000000000002';
+ const outsider='00000000-0000-4000-8000-000000000003';
+ const rpc=async(sql,args=[]) => (await db.query(`select ${sql} as result`,args)).rows[0].result;
+ const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec(`set role ${role}`);};
+ const register=async(student,token,type='line')=>rpc('public.register($1,$2,$3,$4,$5)',[student,'Test member',type,'test-only',token]);
+ try{
+ await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
+ await db.exec(readFileSync(new URL('../supabase/migrations/001_borrow.sql',import.meta.url),'utf8'));
+ await db.query('insert into auth.users(id) values($1),($2),($3)',[president,vice,outsider]);
+ await db.query('insert into private.admins(user_id) values($1),($2)',[president,vice]);
+ const functions=(await db.query("select proname,prosecdef,proconfig from pg_proc join pg_namespace n on n.oid=pronamespace where n.nspname='public' and proname in ('summary','register','lookup','admin_records','admin_action','admin_settings')")).rows;
+ assert.equal(functions.length,6);assert.ok(functions.every(f=>f.prosecdef&&f.proconfig.some(c=>c==='search_path=""')));
+ assert.equal((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='private' and c.relkind='r' and c.relrowsecurity")).rows[0].n,4);
+ await as('anon');assert.equal((await rpc('public.summary()')).total,null);
+ for(const table of ['records','settings','admins','audit'])await assert.rejects(db.query(`select * from private.${table}`),/permission denied/);
+ for(const fn of ['public.admin_records()','public.admin_settings(1,\'\')','public.admin_action(1,\'lend\',null)'])await assert.rejects(rpc(fn),/permission denied/);
+ await assert.rejects(register('A','a'.repeat(64)),/尚未設定/);
+ await as('authenticated',outsider);await assert.rejects(rpc('public.admin_records()'),/管理員/);await assert.rejects(rpc("public.admin_settings(1,'')"),/管理員/);await assert.rejects(rpc("public.admin_action(1,'lend',null)"),/管理員/);
+ await as('authenticated',president);await rpc("public.admin_settings(1,'')");
+ await as('anon');const a=await register(' a ','a'.repeat(64)),b=await register('B','b'.repeat(64));
+ assert.equal(a.record.studentId,'A');assert.equal(a.record.position,1);assert.equal(b.record.standby,1);
+ assert.equal((await register('A','a'.repeat(64))).record.id,a.record.id);
+ await assert.rejects(register('a','c'.repeat(64)),/已有有效/);await assert.rejects(register('C','c'.repeat(64),'email'),/聯絡方式/);
+ await assert.rejects(rpc('public.lookup($1)',['d'.repeat(64)]),/查無登記/);await assert.rejects(rpc('public.lookup($1)',['1']),/格式/);
+ assert.equal((await rpc('public.lookup($1)',['a'.repeat(64)])).record.id,a.record.id);
+ assert.ok(!JSON.stringify(await rpc('public.summary()')).includes('studentId'));
+ await as('authenticated',vice);const lend=()=>rpc('public.admin_action($1,$2,$3)',[b.record.id,'lend','test bicycle']);
+ await lend();await lend();await assert.rejects(rpc('public.admin_action($1,$2,$3)',[a.record.id,'lend',null]),/沒有尚未借出/);
+ await assert.rejects(rpc("public.admin_settings(0,'')"),/低於/);
+ await as('anon');await assert.rejects(register('b','c'.repeat(64)),/已有有效/);const me=await rpc('public.lookup($1)',['a'.repeat(64)]);assert.equal(me.record.position,1);assert.equal(me.record.standby,1);
+ await as('authenticated',president);await rpc('public.admin_action($1,$2,$3)',[b.record.id,'return',null]);await rpc('public.admin_action($1,$2,$3)',[b.record.id,'return',null]);
+ assert.equal((await rpc('public.summary()')).available,1);
+ await rpc('public.admin_action($1,$2,$3)',[a.record.id,'cancel',null]);await rpc('public.admin_action($1,$2,$3)',[a.record.id,'cancel',null]);
+ await assert.rejects(rpc('public.admin_action($1,$2,$3)',[a.record.id,'return',null]),/狀態不允許/);
+ const all=await rpc('public.admin_records()');assert.equal(all.summary.waiting,0);assert.equal(all.summary.borrowed,0);
+ assert.equal(all.records.length,2);assert.ok(!JSON.stringify(all).includes('token_hash'));
+ assert.equal(all.audit.filter(a=>a.action==='lend').length,1);assert.equal(all.audit.filter(a=>a.action==='return').length,1);assert.equal(all.audit.filter(a=>a.action==='cancel').length,1);
+ assert.equal(all.audit.find(a=>a.action==='lend').actor,vice);assert.equal(all.audit.find(a=>a.action==='return').actor,president);
+ await as('authenticated',outsider);await assert.rejects(db.query('select * from private.records'),/permission denied/);
+ await as('anon');assert.equal((await rpc('public.lookup($1)',['b'.repeat(64)])).record.status,'returned');
+ }finally{await db.close();}
+});

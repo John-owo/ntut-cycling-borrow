@@ -1,0 +1,17 @@
+{
+  "name": "ntut-cycling-borrow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node server/start.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "setup-admin": "node server/setup-admin.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

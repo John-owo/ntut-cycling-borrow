@@ -1,0 +1,82 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+
+const source=readFileSync(new URL('../public/api.js',import.meta.url),'utf8');
+const origin='https://test-only.supabase.co';
+const key='sb_publishable_test_only';
+let instance=0;
+async function client(t,initial=null) {
+ const previous=Object.fromEntries(['window','sessionStorage','fetch'].map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
+ const storage=new Map(initial?[['bike-admin-session',JSON.stringify(initial)]]:[]);
+ const queue=[];
+ globalThis.window={BIKE_CONFIG:{mode:'supabase',supabaseUrl:origin,supabaseKey:key}};
+ globalThis.sessionStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
+ globalThis.fetch=async(url,options)=>{
+  const expected=queue.shift();assert.ok(expected,`Unexpected request: ${url}`);
+  assert.equal(url,origin+expected.path);assert.equal(options.method,'POST');
+  assert.equal(options.cache,'no-store');assert.ok(options.signal instanceof AbortSignal);
+  assert.equal(options.headers.apikey,key);
+  assert.equal(options.headers.Authorization,expected.token?`Bearer ${expected.token}`:undefined);
+  assert.deepEqual(options.body===undefined?undefined:JSON.parse(options.body),expected.body);
+  return expected.status===204?new Response(null,{status:204}):Response.json(expected.result??{}, {status:expected.status??200});
+ };
+ t.after(()=>{for(const [k,descriptor]of Object.entries(previous)){if(descriptor)Object.defineProperty(globalThis,k,descriptor);else delete globalThis[k];}});
+ const api=await import('data:text/javascript;base64,'+Buffer.from(source+`\n// test instance ${++instance}`).toString('base64'));
+ return {api,storage,expect:request=>queue.push(request),done:()=>assert.equal(queue.length,0,'All expected requests must run')};
+}
+const authResult=(token='test-user-jwt',refresh='test-refresh')=>({user:{email:'president@example.test'},access_token:token,refresh_token:refresh,expires_in:3600});
+
+test('Publishable anonymous requests use only apikey and preserve private lookup/register RPC arguments',async t=>{
+ const c=await client(t);const token='a'.repeat(64);
+ c.expect({path:'/rest/v1/rpc/summary',body:{},result:{total:2,waiting:0}});
+ assert.deepEqual(await c.api.api('/api/summary'),{total:2,waiting:0});
+ c.expect({path:'/rest/v1/rpc/register',body:{p_student_id:'S1',p_name:'Test member',p_contact_type:'line',p_contact:'test-only',p_token:token},result:{record:{status:'waiting',position:1}}});
+ assert.equal((await c.api.api('/api/register',{studentId:'S1',name:'Test member',contactType:'line',contact:'test-only',token})).record.position,1);
+ c.expect({path:'/rest/v1/rpc/lookup',body:{p_token:token},result:{record:{status:'waiting',position:2}}});
+ assert.equal((await c.api.api('/api/me',{token})).record.position,2);
+ assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.size,0);c.done();
+});
+
+test('Login verifies officer access, administrator RPCs use user JWT, and 204 logout clears credentials',async t=>{
+ const c=await client(t);
+ c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'president@example.test',password:'test-only-password'},result:authResult()});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'test-user-jwt'});
+ await c.api.login('president@example.test','test-only-password');assert.equal(c.api.currentAdmin(),'president@example.test');
+ assert.equal(JSON.parse(c.storage.get('bike-admin-session')).token,'test-user-jwt');
+ c.expect({path:'/rest/v1/rpc/admin_action',body:{p_id:7,p_action:'lend',p_bike_note:'Test bike'},token:'test-user-jwt',result:{record:{status:'borrowed'}}});
+ assert.equal((await c.api.api('/api/admin/action',{id:7,action:'lend',bikeNote:'Test bike'},true)).record.status,'borrowed');
+ c.expect({path:'/rest/v1/rpc/admin_action',body:{p_id:7,p_action:'return',p_bike_note:null},token:'test-user-jwt'});
+ await c.api.api('/api/admin/action',{id:7,action:'return'},true);
+ c.expect({path:'/rest/v1/rpc/admin_settings',body:{p_total:3,p_contact_url:'https://example.test/contact'},token:'test-user-jwt'});
+ await c.api.api('/api/admin/settings',{total:3,contactUrl:'https://example.test/contact'},true);
+ // An officer session must never turn public calls into private/authenticated calls.
+ c.expect({path:'/rest/v1/rpc/summary',body:{}});await c.api.api('/api/summary');
+ c.expect({path:'/auth/v1/logout',token:'test-user-jwt',status:204});await c.api.logout();
+ assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.has('bike-admin-session'),false);
+ await assert.rejects(c.api.api('/api/admin/records',undefined,true),e=>e.status===401);c.done();
+});
+
+test('Expired officer session refreshes with apikey and uses rotated user JWT on the following RPC',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'expired-jwt',refreshToken:'old-refresh',expires:0});
+ c.expect({path:'/auth/v1/token?grant_type=refresh_token',body:{refresh_token:'old-refresh'},result:authResult('rotated-jwt','rotated-refresh')});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'rotated-jwt',result:{records:[]}});
+ assert.deepEqual(await c.api.api('/api/admin/records',undefined,true),{records:[]});
+ const saved=JSON.parse(c.storage.get('bike-admin-session'));assert.equal(saved.refreshToken,'rotated-refresh');assert.ok(saved.expires>Date.now());c.done();
+});
+
+test('Valid Auth login without officer permission removes the newly obtained session',async t=>{
+ const c=await client(t);
+ c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'outsider@example.test',password:'test-only-password'},result:{...authResult(),user:{email:'outsider@example.test'}}});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'test-user-jwt',status:403,result:{message:'Officer permission required'}});
+ await assert.rejects(c.api.login('outsider@example.test','test-only-password'),e=>e.status===403&&e.message==='Officer permission required');
+ assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.has('bike-admin-session'),false);
+ await assert.rejects(c.api.api('/api/admin/settings',{total:2,contactUrl:''},true),e=>e.status===401);c.done();
+});
+
+test('Rejected refresh token clears the old session and sends no administrator RPC',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'expired-jwt',refreshToken:'revoked-refresh',expires:0});
+ c.expect({path:'/auth/v1/token?grant_type=refresh_token',body:{refresh_token:'revoked-refresh'},status:401,result:{error_description:'Refresh token revoked'}});
+ await assert.rejects(c.api.api('/api/admin/records',undefined,true),e=>e.status===401&&e.message==='Refresh token revoked');
+ assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.size,0);c.done();
+});
