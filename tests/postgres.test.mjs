@@ -12,14 +12,15 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec(`set role ${role}`);};
  const register=async(student,token,type='line')=>rpc('public.register($1,$2,$3,$4,$5)',[student,'Test member',type,'test-only',token]);
  try{
- await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
+ await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key, email text); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
  await db.exec(readFileSync(new URL('../supabase/migrations/001_borrow.sql',import.meta.url),'utf8'));
- await db.query('insert into auth.users(id) values($1),($2),($3)',[president,vice,outsider]);
+ await db.query('insert into auth.users(id,email) values($1,$4),($2,$5),($3,$6)',[president,vice,outsider,'president@example.test','vice@example.test','outsider@example.test']);
  await db.query('insert into private.admins(user_id) values($1),($2)',[president,vice]);
  const functions=(await db.query("select proname,prosecdef,proconfig from pg_proc join pg_namespace n on n.oid=pronamespace where n.nspname='public' and proname in ('summary','register','lookup','admin_records','admin_action','admin_settings')")).rows;
  assert.equal(functions.length,6);assert.ok(functions.every(f=>f.prosecdef&&f.proconfig.some(c=>c==='search_path=""')));
  assert.equal((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='private' and c.relkind='r' and c.relrowsecurity")).rows[0].n,4);
  await db.exec(readFileSync(new URL('../supabase/migrations/002_opening_loans.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/003_abuse_controls.sql',import.meta.url),'utf8'));
  await as('anon');assert.equal((await rpc('public.summary()')).total,null);
  for(const table of ['records','settings','admins','audit'])await assert.rejects(db.query(`select * from private.${table}`),/permission denied/);
  for(const fn of ['public.admin_records()','public.admin_settings(1,\'\')','public.admin_action(1,\'lend\',null)'])await assert.rejects(rpc(fn),/permission denied/);
@@ -44,7 +45,7 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  const all=await rpc('public.admin_records()');assert.equal(all.summary.waiting,0);assert.equal(all.summary.borrowed,0);
  assert.equal(all.records.length,2);assert.ok(!JSON.stringify(all).includes('token_hash'));
  assert.equal(all.audit.filter(a=>a.action==='lend').length,1);assert.equal(all.audit.filter(a=>a.action==='return').length,1);assert.equal(all.audit.filter(a=>a.action==='cancel').length,1);
- assert.equal(all.audit.find(a=>a.action==='lend').actor,vice);assert.equal(all.audit.find(a=>a.action==='return').actor,president);
+ assert.equal(all.audit.find(a=>a.action==='lend').actor,'vice@example.test');assert.equal(all.audit.find(a=>a.action==='lend').actorId,vice);assert.equal(all.audit.find(a=>a.action==='return').actor,'president@example.test');
  await as('authenticated',outsider);await assert.rejects(db.query('select * from private.records'),/permission denied/);
  await as('anon');assert.equal((await rpc('public.lookup($1)',['b'.repeat(64)])).record.status,'returned');
  await assert.rejects(rpc("public.admin_return_opening(1,'00000000-0000-4000-8000-000000000010')"),/permission denied/);
@@ -67,5 +68,31 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  await as('authenticated',outsider);await assert.rejects(rpc('public.admin_return_opening($1,$2)',[1,requestId]),/管理員/);
  await as('anon');await assert.rejects(db.query('select * from private.opening_loans'),/permission denied/);await assert.rejects(db.query('select * from private.opening_returns'),/permission denied/);
  assert.ok(!JSON.stringify(await rpc('public.summary()')).includes('expectedReturn'));
+ // 003: anonymous registration throttle, officer bulk cancel, audited export.
+ await as('anon');for(const fn of ['public.admin_cancel_many(array[1]::bigint[])','public.admin_export()'])await assert.rejects(rpc(fn),/permission denied/);
+ await as('authenticated',outsider);await assert.rejects(rpc('public.admin_cancel_many(array[1]::bigint[])'),/管理員/);await assert.rejects(rpc('public.admin_export()'),/管理員/);
+ await db.exec('reset role');assert.equal((await db.query("select count(*)::int n from private.register_attempts where client_hash='unknown'")).rows[0].n,(await db.query('select count(*)::int n from private.register_attempts')).rows[0].n);
+ await db.exec("insert into private.register_attempts(client_hash) select 'test-flood' from generate_series(1,15)");
+ await as('anon');await assert.rejects(register('FLOOD','e'.repeat(64)),/人數較多/);
+ assert.equal((await register('OPEN0','1'.repeat(64))).record.studentId,'OPEN0'); // replay of an existing code is never throttled
+ await db.exec('reset role');await db.exec("delete from private.register_attempts");
+ await db.query("select set_config('request.headers',$1,false)",[JSON.stringify({'cf-connecting-ip':'203.0.113.9','x-forwarded-for':'198.51.100.1, 203.0.113.9'})]);
+ await db.exec("insert into private.register_attempts(client_hash) select encode(sha256(convert_to('203.0.113.9','UTF8')),'hex') from generate_series(1,10)");
+ await as('anon');await assert.rejects(register('FLOOD','e'.repeat(64)),/次數過多/);
+ await db.query("select set_config('request.headers',$1,false)",[JSON.stringify({'cf-connecting-ip':'203.0.113.10'})]);
+ const x1=await register('X1','f'.repeat(64)),x2=await register('X2','a1'.repeat(32));
+ await db.exec('reset role');assert.equal((await db.query("select count(*)::int n from private.register_attempts where client_hash=encode(sha256(convert_to('203.0.113.10','UTF8')),'hex')")).rows[0].n,2);
+ assert.equal((await db.query("select count(*)::int n from private.register_attempts where client_hash like '203.%'")).rows[0].n,0);
+ await db.query("select set_config('request.headers','',false)");
+ await as('authenticated',president);const bulk=await rpc('public.admin_cancel_many($1::bigint[])',[[x1.record.id,x2.record.id,b.record.id,999999,x1.record.id]]);
+ assert.deepEqual(bulk.cancelled,[x1.record.id,x2.record.id]);assert.deepEqual(bulk.skipped,[b.record.id,999999]);
+ await assert.rejects(rpc('public.admin_cancel_many($1::bigint[])',[[]]),/格式/);
+ const afterBulk=await rpc('public.admin_records()');assert.equal(afterBulk.audit.filter(a=>a.action==='cancel'&&a.details.bulk===true).length,2);
+ assert.ok(afterBulk.records.every(r=>![x1.record.id,x2.record.id].includes(r.id)||r.status==='cancelled'));
+ const dump=await rpc('public.admin_export()');assert.equal(dump.exportedBy,'president@example.test');assert.equal(dump.records.length,afterBulk.records.length);
+ assert.ok(dump.records.every(r=>typeof r.token_hash==='string'));assert.deepEqual(dump.admins.sort(),['president@example.test','vice@example.test']);
+ assert.equal(dump.opening.outstanding,2);assert.equal(dump.settings.total,6);
+ assert.equal((await rpc('public.admin_records()')).audit[0].action,'export');
+ await as('anon');assert.ok(!JSON.stringify(await rpc('public.summary()')).includes('token_hash'));
  }finally{await db.close();}
 });

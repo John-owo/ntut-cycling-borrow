@@ -1,5 +1,17 @@
 # Supabase 後端
 
+## 濫用防護與幹部工具（003）
+
+依序套用 001、002 後執行 `migrations/003_abuse_controls.sql`。內容：
+
+- 匿名 `register` 節流：全站每分鐘 15 次、每小時 90 次、每日 300 次新登記嘗試；同一來源網路每 10 分鐘 10 次。來源以 `cf-connecting-ip`／`x-real-ip`／`x-forwarded-for` 最後一段的 SHA-256 記錄在 `private.register_attempts`，不存原始 IP，超過一天自動清除。重送既有查詢碼不計次。超限回傳 HTTP 429，訊息為「目前登記人數較多…」。上限寫在 `private.check_register_throttle()`，若社團活動需要放寬，另開 migration 調整。
+- `admin_cancel_many(p_ids bigint[])`：一次取消多筆等候登記（最多 500 個 id），非等候中的 id 放在 `skipped`，每筆各寫一筆 `cancel` audit 並標記 `bulk:true`。用於清理垃圾登記。
+- `admin_records()` 的 audit 只回最近 500 筆，`actor` 改為幹部 email（查不到時退回 UUID 字串），另附 `actorId`。
+- `admin_export()`：完整 JSON 備份（settings、opening、records 含 token_hash、audit、opening_returns、admins email），呼叫本身寫入 `export` audit。本機對應 `GET /api/admin/export`、`POST /api/admin/cancel-many { ids }`。
+- 備份指令：`node scripts/export-backup.mjs`，以環境變數 `BIKE_ADMIN_EMAIL`／`BIKE_ADMIN_PASSWORD` 提供幹部帳密，輸出到 `backups/`（Git 忽略）。檔案含個資，請私下保存。免費方案無自動備份且閒置 7 天會暫停專案，建議每學期至少匯出一次。
+- 前端目前尚未提供批次取消與匯出按鈕；UI 改版完成後再接 `api.js` 路由。
+
+
 ## 期初借出盤點（002）
 
 已套用的 `001_borrow.sql` 保持原樣，接著執行 `migrations/002_opening_loans.sql`。002 只建立期初盤點資料，初始尚未歸還數量為 0，不生成借用人或借用明細。實際期初數量、預計歸還日期及盤點註記，由授權的管理者使用一次性 SQL 初始化；先鎖定 settings row 並確認「期初尚未歸還＋網站借用中」不超過總車數。未到位的新車不計入總數。

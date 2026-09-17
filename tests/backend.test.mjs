@@ -8,7 +8,7 @@ import { createApp } from '../server/app.mjs';
 
 test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'bike-backend-'));const dbPath=join(dir,'db.sqlite');let app;let base;let bearer;
- const start=async()=>{app=createApp({dbPath});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
+ const start=async(extra={})=>{app=createApp({dbPath,...extra});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
  const call=async(path,body,admin=false)=>{const response=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${bearer}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,...await response.json()};};
  const registration=id=>({studentId:id.toUpperCase(),name:'Test member',contactType:'line',contact:'test-only',token:randomBytes(32).toString('hex')});
  try{
@@ -66,7 +66,26 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
  assert.equal((await call('/api/admin/opening-return',{count:3,requestId:'00000000-0000-4000-8000-000000000011'},true)).status,409);
  const openingAdmin=await call('/api/admin/records',undefined,true);assert.equal(openingAdmin.opening.expectedReturn,'2000-01-01');assert.equal(openingAdmin.audit.filter(a=>a.action==='opening-return').length,1);
  assert.equal(JSON.stringify(await call('/api/summary')).includes('expectedReturn'),false);
+ // Officer bulk cancel skips non-waiting ids and audits each cancellation.
+ const x1=await call('/api/register',registration('bulk-1')),x2=await call('/api/register',registration('bulk-2'));
+ assert.equal((await call('/api/admin/cancel-many',{ids:[x1.record.id]})).status,401);
+ assert.equal((await call('/api/admin/cancel-many',{ids:[]},true)).status,400);
+ const bulk=await call('/api/admin/cancel-many',{ids:[x1.record.id,x2.record.id,winner.id,999999,x1.record.id]},true);
+ assert.deepEqual(bulk.cancelled,[x1.record.id,x2.record.id].sort((a,b)=>a-b));assert.deepEqual(bulk.skipped,[winner.id,999999].sort((a,b)=>a-b));
+ const afterBulk=await call('/api/admin/records',undefined,true);assert.equal(afterBulk.audit.filter(a=>a.action==='cancel'&&JSON.parse(a.details).bulk===true).length,2);
+ // Export is officer-only, complete (keeps token hashes for restore) and audited.
+ assert.equal((await call('/api/admin/export')).status,401);
+ const dump=await call('/api/admin/export',undefined,true);assert.equal(dump.exportedBy,'president');assert.equal(dump.records.length,afterBulk.records.length);
+ assert.ok(dump.records.every(r=>typeof r.tokenHash==='string'));assert.deepEqual(dump.admins,['president','vice']);
+ assert.equal((await call('/api/admin/records',undefined,true)).audit[0].action,'export');
  assert.equal((await call('/api/admin/logout',{},true)).status,200);assert.equal((await call('/api/admin/records',undefined,true)).status,401);
+ // Registration throttle: new attempts are capped, replays of an existing code are not.
+ await app.close();await start({registerLimits:{minute:2,hour:90,day:300,client:10}});
+ const t1=registration('throttle-1');assert.equal((await call('/api/register',t1)).status,200);assert.equal((await call('/api/register',registration('throttle-2'))).status,200);
+ assert.equal((await call('/api/register',registration('throttle-3'))).status,429);
+ assert.equal((await call('/api/register',t1)).status,200);
+ await app.close();await start({registerLimits:{minute:15,hour:90,day:300,client:1}});
+ assert.equal((await call('/api/register',registration('client-1'))).status,200);assert.equal((await call('/api/register',registration('client-2'))).status,429);
  }finally{await app?.close();rmSync(dir,{recursive:true,force:true});}
 });
 
