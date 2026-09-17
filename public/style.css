@@ -17,3 +17,12 @@
 
 .rules>div{grid-template-columns:repeat(2,1fr)}
 @media(max-width:700px){.rules>div{grid-template-columns:1fr}}
+
+/* Official club artwork supplied by the club; preserve the original image. */
+.brand{display:flex;align-items:center;gap:12px}.brand .club-logo{display:block;width:80px;height:80px;object-fit:contain;flex:none}.brand .brand-name{display:block;font-size:19px;letter-spacing:0;color:var(--ink);margin:0;line-height:1.4}.brand .brand-name>span{font-size:10px;letter-spacing:2px;color:var(--navy);margin-top:5px}
+@media(max-width:700px){.brand{gap:7px}.brand .club-logo{width:58px;height:58px}.brand .brand-name{font-size:15px}.brand .brand-name>span{font-size:8px;letter-spacing:1px}.admin-link span{padding-left:3px}}
+
+/* Logo-led identity: blue ink, white field, open geometric frames. */
+:root{--navy:#2d398e;--dark:#222e70;--line:#dce0ee;--wash:#f4f5fa}
+.hero{background:#fff;color:var(--navy);border-top:4px solid var(--navy);border-bottom:1px solid var(--line);padding:40px 44px 42px}.hero h1{font-style:italic;font-weight:700;color:var(--navy)}.hero .eyebrow{color:var(--navy)}.hero .intro{color:var(--body)}.hero-caption{color:var(--muted)}.hero .button{background:var(--navy);border-color:var(--navy);color:#fff}.hero .button:hover{background:var(--dark)}.hero-aside>a:last-child{color:var(--navy)}.wheel-art{width:280px;height:280px;right:48px;top:-80px;transform:rotate(45deg);opacity:.65}.wheel-art i{border:2px solid #2d398e1f;border-radius:0}.wheel-art i:nth-child(2){inset:30px;border-left:0;border-bottom:0}.wheel-art i:nth-child(3){display:none}.button,button,input,select,textarea,.record,.contact-block,.personal,.recovery{border-radius:2px}.metrics strong{font-style:italic}.hero-aside{position:relative}.hero-caption{font-style:italic}.brand .club-logo{width:96px;height:96px}.brand .brand-name{color:var(--navy)}header{padding:12px 0}.admin-title{border-top:4px solid var(--navy)}.admin-title h1{color:var(--navy)}.rules{border-top:2px solid var(--navy)}
+@media(max-width:700px){.hero{margin:0 0 24px;padding:28px 0 30px}.hero h1{font-size:40px}.wheel-art{right:-100px;top:-80px;width:230px;height:230px}.brand .club-logo{width:64px;height:64px}.brand .brand-name{font-size:14px}.brand .brand-name>span{font-size:8px;letter-spacing:.7px}.hero-aside{margin-top:22px}.hero .eyebrow{font-size:9px}header{padding:12px 0}.admin-title{padding-top:26px}}
