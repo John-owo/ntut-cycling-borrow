@@ -1,3 +1,4 @@
+import {confirmLocalized} from './i18n.js';
 import {api,safeContact,node,date} from './api.js';
 const $=id=>document.getElementById(id);
 let savedToken='',pendingToken='',summary=null,lastSuccess=0,busy=false,refreshing=false,lookupSequence=0;
@@ -25,6 +26,6 @@ $('register-form').addEventListener('submit',async e=>{e.preventDefault();if(bus
  finally{busy=false;$('register-button').disabled=!summary||summary.total===null||Date.now()-lastSuccess>45000;}});
 $('lookup-form').addEventListener('submit',async e=>{e.preventDefault();const token=$('lookup-token').value.trim().toLowerCase();if(!/^[a-f0-9]{64}$/.test(token)){message('lookup-message','請貼上完整的 64 字元查詢碼。',true);return;}try{await lookup(token,true);}catch{}});
 $('copy-code').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('recovery-code').textContent);message('copy-message','已複製，請存到自己的私人筆記。');}catch{message('copy-message','無法自動複製，請長按上方查詢碼選取並保存。',true);}});
-$('forget').addEventListener('click',()=>{if(!confirm('請先確認已另存查詢碼。清除此裝置的查詢碼，不會取消登記。'))return;lookupSequence++;savedToken='';pendingToken='';save('bike-query-token','');save('bike-pending-token','');$('lookup-token').value='';$('personal-result').replaceChildren();$('personal-result').hidden=true;$('recovery-code').textContent='';$('recovery').hidden=true;$('forget').hidden=true;message('lookup-message','已清除此裝置的查詢碼。');refresh();});
+$('forget').addEventListener('click',()=>{if(!confirmLocalized('請先確認已另存查詢碼。清除此裝置的查詢碼，不會取消登記。'))return;lookupSequence++;savedToken='';pendingToken='';save('bike-query-token','');save('bike-pending-token','');$('lookup-token').value='';$('personal-result').replaceChildren();$('personal-result').hidden=true;$('recovery-code').textContent='';$('recovery').hidden=true;$('forget').hidden=true;message('lookup-message','已清除此裝置的查詢碼。');refresh();});
 window.addEventListener('offline',()=>stale('目前離線'));window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});setInterval(()=>{if(!document.hidden)refresh();},15000);setInterval(()=>{if(lastSuccess&&Date.now()-lastSuccess>45000)stale('資料超過 45 秒未更新');},5000);
 if(savedToken){$('lookup-token').value=savedToken;$('forget').hidden=false;}else if(pendingToken){$('lookup-token').value=pendingToken;showCode(pendingToken);message('register-message','先前的送出結果尚未確認。請用保存的查詢碼查詢。');}refresh();

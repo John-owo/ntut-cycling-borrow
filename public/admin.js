@@ -1,3 +1,4 @@
+import {confirmLocalized} from './i18n.js';
 import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date} from './api.js';
 const $=id=>document.getElementById(id);let data=null,filter='waiting',refreshing=false,lastSuccess=0,pending=null,mutating=false,settingsDirty=false,authGeneration=0;
 const names={waiting:'等候中',borrowed:'借用中',returned:'已歸還',cancelled:'已取消'};const actions={lend:'確認借出',return:'確認歸還',cancel:'取消登記'};
@@ -29,13 +30,13 @@ function showOpening(root) {
   if(!opening || (!(opening.outstanding>0)&&!events.length&&!retry)) return;
   const card=node('article',undefined,'record');card.append(node('h3','系統啟用前的既有借用'),node('p',`尚未歸還 ${opening.outstanding} 台。借用人資料尚未提供，請搭配原紙本紀錄核對。`));
   if(opening.expectedReturn)card.append(node('p',`預計歸還：${opening.expectedReturn}。這只是提醒，實際收車後才更新數量。`));
-  if(opening.note)card.append(node('p',opening.note));
+  if(opening.note)card.append(node('p',opening.note,'user-content'));
   for(const event of events){let details=event.details;if(typeof details==='string'){try{details=JSON.parse(details);}catch{details={};}}card.append(node('p',`${date(event.at)} · ${event.actor} · 確認既有借用歸還 ${details?.count??'—'} 台`,'audit'));}
   if(filter==='borrowed' && (opening.outstanding>0||retry)){
     const form=node('form');const label=node('label','這次實際收到幾台車？');const input=node('input');input.type='number';input.min='1';input.max=String(Math.max(opening.outstanding,retry?.count||0));input.step='1';input.required=true;input.value=String(retry?.count||openingDraft);input.disabled=!!retry;input.addEventListener('input',()=>openingDraft=Number(input.value));label.append(input);
     const button=node('button',retry?`重試確認歸還 ${retry.count} 台`:'確認既有借用歸還');button.type='submit';button.disabled=locked()||mutating;form.append(label,button);
     if(retry)form.append(node('p','上次送出結果待確認；重試會使用相同操作碼，不會重複增加可借車數。','fine'));
-    form.addEventListener('submit',async e=>{e.preventDefault();if(mutating)return;const count=retry?.count||Number(input.value);if(!Number.isSafeInteger(count)||count<1)return;if(!confirm(`確認已實際收到 ${count} 台既有借用的社車？請核對原紙本紀錄。`))return;
+    form.addEventListener('submit',async e=>{e.preventDefault();if(mutating)return;const count=retry?.count||Number(input.value);if(!Number.isSafeInteger(count)||count<1)return;if(!confirmLocalized(`確認已實際收到 ${count} 台既有借用的社車？請核對原紙本紀錄。`))return;
       const operation=retry||{count,requestId:crypto.randomUUID()};
       try{localStorage.setItem('bike-opening-return',JSON.stringify(operation));}catch{message('action-message','無法保存操作碼，請允許此網站儲存資料後重試。',true);return;}
       mutating=true;button.disabled=true;
