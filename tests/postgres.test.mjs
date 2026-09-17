@@ -19,6 +19,7 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  const functions=(await db.query("select proname,prosecdef,proconfig from pg_proc join pg_namespace n on n.oid=pronamespace where n.nspname='public' and proname in ('summary','register','lookup','admin_records','admin_action','admin_settings')")).rows;
  assert.equal(functions.length,6);assert.ok(functions.every(f=>f.prosecdef&&f.proconfig.some(c=>c==='search_path=""')));
  assert.equal((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='private' and c.relkind='r' and c.relrowsecurity")).rows[0].n,4);
+ await db.exec(readFileSync(new URL('../supabase/migrations/002_opening_loans.sql',import.meta.url),'utf8'));
  await as('anon');assert.equal((await rpc('public.summary()')).total,null);
  for(const table of ['records','settings','admins','audit'])await assert.rejects(db.query(`select * from private.${table}`),/permission denied/);
  for(const fn of ['public.admin_records()','public.admin_settings(1,\'\')','public.admin_action(1,\'lend\',null)'])await assert.rejects(rpc(fn),/permission denied/);
@@ -46,5 +47,25 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  assert.equal(all.audit.find(a=>a.action==='lend').actor,vice);assert.equal(all.audit.find(a=>a.action==='return').actor,president);
  await as('authenticated',outsider);await assert.rejects(db.query('select * from private.records'),/permission denied/);
  await as('anon');assert.equal((await rpc('public.lookup($1)',['b'.repeat(64)])).record.status,'returned');
+ await assert.rejects(rpc("public.admin_return_opening(1,'00000000-0000-4000-8000-000000000010')"),/permission denied/);
+ await db.exec('reset role');await db.exec("update private.opening_loans set outstanding=3,expected_return='2000-01-01',note='test inventory' where id=1");
+ await as('authenticated',president);await rpc("public.admin_settings(6,'')");
+ assert.equal((await rpc('public.summary()')).borrowed,3);
+ assert.equal((await rpc('public.admin_records()')).opening.expectedReturn,'2000-01-01');
+ await as('anon');const openingQueue=[];for(let i=0;i<4;i++)openingQueue.push(await register(`OPEN${i}`,String(i+1).repeat(64)));
+ assert.equal(openingQueue[3].record.standby,1);
+ await as('authenticated',president);for(const r of openingQueue.slice(0,3))await rpc('public.admin_action($1,$2,$3)',[r.record.id,'lend',null]);
+ await assert.rejects(rpc('public.admin_action($1,$2,$3)',[openingQueue[3].record.id,'lend',null]),/沒有尚未借出/);
+ await assert.rejects(rpc("public.admin_settings(5,'')"),/低於/);
+ const requestId='00000000-0000-4000-8000-000000000010';
+ const returned=await rpc('public.admin_return_opening($1,$2)',[1,requestId]);
+ assert.equal(returned.summary.borrowed,5);assert.equal(returned.opening.outstanding,2);
+ const retry=await rpc('public.admin_return_opening($1,$2)',[1,requestId]);assert.deepEqual(retry.receipt,returned.receipt);assert.equal(retry.summary.borrowed,5);
+ await assert.rejects(rpc('public.admin_return_opening($1,$2)',[2,requestId]),/不同歸還數量/);
+ await assert.rejects(rpc('public.admin_return_opening($1,$2)',[3,'00000000-0000-4000-8000-000000000011']),/不可超過/);
+ const openingAdmin=await rpc('public.admin_records()');assert.equal(openingAdmin.audit.filter(a=>a.action==='opening-return').length,1);assert.equal(openingAdmin.audit.find(a=>a.action==='opening-return').details.requestId,requestId);
+ await as('authenticated',outsider);await assert.rejects(rpc('public.admin_return_opening($1,$2)',[1,requestId]),/管理員/);
+ await as('anon');await assert.rejects(db.query('select * from private.opening_loans'),/permission denied/);await assert.rejects(db.query('select * from private.opening_returns'),/permission denied/);
+ assert.ok(!JSON.stringify(await rpc('public.summary()')).includes('expectedReturn'));
  }finally{await db.close();}
 });

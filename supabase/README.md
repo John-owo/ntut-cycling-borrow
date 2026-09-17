@@ -1,5 +1,17 @@
 # Supabase 後端
 
+## 期初借出盤點（002）
+
+已套用的 `001_borrow.sql` 保持原樣，接著執行 `migrations/002_opening_loans.sql`。002 只建立期初盤點資料，初始尚未歸還數量為 0，不生成借用人或借用明細。實際期初數量、預計歸還日期及盤點註記，由授權的管理者使用一次性 SQL 初始化；先鎖定 settings row 並確認「期初尚未歸還＋網站借用中」不超過總車數。未到位的新車不計入總數。
+
+借出總數包含期初盤點與網站借用中兩部分；備取與庫存檢查使用同一合併數量。預計歸還日期只是幹部提示，日期到了也不會自動減少借出數。
+
+`admin_records()` 另回傳 `opening: { outstanding, expectedReturn, note }`；公開 summary 不回傳期初日期或註記。管理員實際收車後呼叫 `admin_return_opening(p_count, p_request_id)`，其中 request ID 為前端生成的 UUID。同一次操作重試必須沿用原 UUID，成功回傳 `{ receipt, opening, summary }`。receipt 保存 requestId、count、actor、at、remaining；相同 UUID 與 count 重送回原收據及最新摘要，相同 UUID 改變數量會被拒絕。
+
+本機對應端點：`POST /api/admin/opening-return { count, requestId }`，仍需 bearer 管理憑證。開放一般社員的查詢功能無法讀取／操作期初盤點。
+
+PGlite 測試會實際執行 001＋002，驗證合併庫存、不能降低至借出總數以下、歸還重試與 audit。SQLite HTTP 測試另驗證重啟後重試不會再次扣減。這些證據仍不代替 Supabase 託管環境的多連線並行及 Auth 驗證。
+
 GitHub Pages 只提供前端；持久資料與權限由 Supabase 管理。請使用免費專案，不建立付費資源。
 
 1. 在 Supabase SQL Editor 執行 `migrations/001_borrow.sql` 一次。使用 PostgreSQL 內建 SHA-256，不需要額外 extension。

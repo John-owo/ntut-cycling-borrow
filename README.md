@@ -3,7 +3,7 @@
 公開品牌：北科大自由車社／NTUT CYCLING CLUB。
 
 部署目標：GitHub Pages 前端 + Supabase 免費方案資料庫與管理登入。不需要另購網域。
-目前本機版可實際保存登記、查詢順位、借出、歸還、取消與設定；正式 Supabase 連線、兩位幹部身分與真實車數仍須完成設定及 live 驗證。不要把本機測試當作雲端已上線。
+目前本機版可實際保存登記、查詢順位、借出、歸還、取消與設定；Supabase 資料庫已套用 001／002，公開 API 與匿名權限隔離已實測；兩位幹部實際登入仍須完成驗證。不要把本機測試當作完整雲端验收。
 
 ## 本機操作
 
@@ -21,7 +21,7 @@ node server/start.mjs
 
 ## 雲端設定
 
-1. 在自己的 Supabase 免費專案執行 `supabase/migrations/001_borrow.sql`。先確認是專用新專案，避免与既有同名表衝突。此 migration 用 transaction，一次執行；請勿在含正式資料的專案任意重跑或刪表。
+1. 在自己的 Supabase 免費專案依序執行 `supabase/migrations/001_borrow.sql`、`002_opening_loans.sql`。先確認是專用新專案，避免与既有同名表衝突。此 migration 用 transaction，一次執行；請勿在含正式資料的專案任意重跑或刪表。
 2. 在 Supabase Auth 建立兩位幹部各自的登入身分，將各自 UUID 加入 `private.admins`。詳見 `supabase/README.md`。一般註冊用戶不會自動取得管理權；前端沒有幹部自行註冊功能。關閉不需要的公開 Auth signup。
 3. GitHub 儲存庫的 Actions variables 設定 `SUPABASE_URL` 與 `SUPABASE_PUBLISHABLE_KEY`（公開 publishable／anon key，不是 secret/service_role key）。私人金鑰與資料庫密碼不能進 GitHub Pages。
 4. GitHub Pages 的來源選 GitHub Actions。workflow 只會發布 `public/`，不包含本機資料庫或 SQL source；正式網站無需 Node 伺服器。
@@ -53,3 +53,9 @@ SQLite 測試使用真 HTTP 與磁碟資料庫，包含並行最後一台、冪�
 正式上線前待驗證：Supabase Auth 登入、Data API grants、兩位管理員實際權限、GitHub Pages 跨裝置連線、正式資料備份與復原安排。免費服務額度與暫停政策依供應商當時規則；未啟用任何付費方案。公開登記沒有學籍驗證；同學號去重不代表身分已核驗。操作紀錄限幹部查看，請由社團決定適當的資料保留期間。
 
 本機展示不等於正式社團驗收。Sites 沒有用於此專案的發布。
+
+## 既有借用
+
+啟用前已借出但尚無社員明細的車，以獨立期初借出數量保存，不建立假學號或假社員。公開已借出為期初尚未歸還加上網站正式借用中的數量。幹部在「借用中」確認每次實際收到的台數，歸還以永久操作識別碼防止重送扣重；預計歸還日不自動更改庫存。未來新增車輛僅在實際到位後修改總數。
+
+GitHub Pages： https://john-owo.github.io/ntut-cycling-borrow/ （部署與正式驗證狀態以 Actions／本次交付為準）。

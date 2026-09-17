@@ -4,7 +4,7 @@ const names={waiting:'等候中',borrowed:'借用中',returned:'已歸還',cance
 function message(id,text,error=false){$(id).textContent=text;$(id).classList.toggle('error',error);}
 function locked(){return !lastSuccess||Date.now()-lastSuccess>45000;}
 function signedOut(){authGeneration++;data=null;lastSuccess=0;$('workspace').hidden=true;$('login-panel').hidden=false;$('records').replaceChildren();$('identity').textContent='';$('action-dialog').close();$('action-form').reset();$('settings-form').reset();settingsDirty=false;}
-function showRecords(){const root=$('records');root.replaceChildren();const rows=(data?.records||[]).filter(r=>filter==='history'?['returned','cancelled'].includes(r.status):r.status===filter);if(!rows.length){root.append(node('p',filter==='waiting'?'目前沒有等候登記。':filter==='borrowed'?'目前沒有借用中的車輛。':'目前沒有已歸還或取消的紀錄。','empty'));return;}for(const r of rows){const card=node('article',undefined,'record');const head=node('div',undefined,'record-head');const person=node('div');person.append(node('h3',`${r.name} · ${r.studentId}`),node('p',`${r.contactType}：${r.contact}`));head.append(person,node('span',names[r.status],'tag'));card.append(head);if(r.status==='waiting')card.append(node('p',`排隊第 ${r.position} 位${r.standby>0?`／估算備取第 ${r.standby} 位`:'／目前數量可能涵蓋'}，登記於 ${date(r.createdAt)}`));else card.append(node('p',`登記 ${date(r.createdAt)} · 狀態更新 ${date(r.updatedAt)}`));if(r.bikeNote)card.append(node('p',`車號／備註：${r.bikeNote}`));const history=(data.audit||[]).filter(a=>Number(a.recordId)===Number(r.id));for(const a of history.slice(0,5))card.append(node('p',`${date(a.at)} · ${a.actor} · ${actions[a.action]||a.action}`,'audit'));
+function showRecords(){const root=$('records');root.replaceChildren();showOpening(root);const rows=(data?.records||[]).filter(r=>filter==='history'?['returned','cancelled'].includes(r.status):r.status===filter);if(!rows.length){root.append(node('p',filter==='waiting'?'目前沒有等候登記。':filter==='borrowed'?(data?.opening?.outstanding>0?'目前沒有線上登記的借用紀錄；既有借出請見上方。':'目前沒有借用中的車輛。'):'目前沒有已歸還或取消的紀錄。','empty'));return;}for(const r of rows){const card=node('article',undefined,'record');const head=node('div',undefined,'record-head');const person=node('div');person.append(node('h3',`${r.name} · ${r.studentId}`),node('p',`${r.contactType}：${r.contact}`));head.append(person,node('span',names[r.status],'tag'));card.append(head);if(r.status==='waiting')card.append(node('p',`排隊第 ${r.position} 位${r.standby>0?`／估算備取第 ${r.standby} 位`:'／目前數量可能涵蓋'}，登記於 ${date(r.createdAt)}`));else card.append(node('p',`登記 ${date(r.createdAt)} · 狀態更新 ${date(r.updatedAt)}`));if(r.bikeNote)card.append(node('p',`車號／備註：${r.bikeNote}`));const history=(data.audit||[]).filter(a=>Number(a.recordId)===Number(r.id));for(const a of history.slice(0,5))card.append(node('p',`${date(a.at)} · ${a.actor} · ${actions[a.action]||a.action}`,'audit'));
  const controls=node('div',undefined,'record-actions');for(const action of r.status==='waiting'?['lend','cancel']:r.status==='borrowed'?['return']:[]){const b=node('button',actions[action],action==='cancel'?'danger':'');b.type='button';b.disabled=locked()||mutating||(action==='lend'&&(data.summary.available??0)<1);b.addEventListener('click',()=>openAction(r,action));controls.append(b);}card.append(controls);root.append(card);}}
 function render(next){data=next;lastSuccess=Date.now();$('workspace').hidden=false;$('login-panel').hidden=true;$('identity').textContent=`目前登入：${currentAdmin()}`;for(const key of ['total','borrowed','available','waiting'])$(key).textContent=next.summary[key]??'待設定';message('sync-status',`更新於 ${new Date().toLocaleTimeString('zh-TW',{hour12:false})}`);if(!settingsDirty){$('settings-form').elements.total.value=next.summary.total??'';$('settings-form').elements.contactUrl.value=next.summary.contactUrl||'';}showRecords();}
 async function refresh(){if(refreshing||!currentAdmin())return;refreshing=true;const generation=authGeneration;try{const result=await api('/api/admin/records',undefined,true);if(generation!==authGeneration||!currentAdmin())return;render(result);}catch(e){if(generation!==authGeneration)return;message('sync-status',`更新失敗：${e.message}，資料可能已過期。`,true);lastSuccess=0;showRecords();if(e.status===401||e.status===403){clearAdmin();signedOut();message('login-message','登入失效或沒有幹部權限，請重新登入。',true);}}finally{refreshing=false;}}
@@ -17,3 +17,32 @@ $('action-form').addEventListener('submit',async e=>{e.preventDefault();if(!pend
 $('settings-form').addEventListener('input',()=>settingsDirty=true);$('settings-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.currentTarget.querySelector('button');button.disabled=true;const f=new FormData(e.currentTarget);try{await api('/api/admin/settings',{total:Number(f.get('total')),contactUrl:f.get('contactUrl').trim()},true);settingsDirty=false;message('settings-message','設定已保存。');await refresh();}catch(err){message('settings-message',err.message,true);}finally{button.disabled=false;}});
 if(cloud){$('username-label').firstChild.textContent='管理員電子郵件';$('login-form').elements.username.type='email';}
 window.addEventListener('offline',()=>{lastSuccess=0;message('sync-status','目前離線，資料可能已過期。',true);showRecords();});window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});setInterval(()=>{if(!document.hidden)refresh();},15000);setInterval(()=>{if(currentAdmin()&&locked()){message('sync-status','資料未更新，請更新後再操作。',true);showRecords();}},5000);if(currentAdmin())refresh();
+
+// Only a pending operation key is device-local; the authoritative count stays in the database.
+let openingDraft = 1;
+function pendingOpening() { try {return JSON.parse(localStorage.getItem('bike-opening-return') || 'null');}catch{return null;} }
+function showOpening(root) {
+  if(!data || filter==='waiting') return;
+  const opening=data.opening;
+  const events=(data.audit||[]).filter(a=>a.action==='opening-return');
+  const retry=pendingOpening();
+  if(!opening || (!(opening.outstanding>0)&&!events.length&&!retry)) return;
+  const card=node('article',undefined,'record');card.append(node('h3','系統啟用前的既有借用'),node('p',`尚未歸還 ${opening.outstanding} 台。借用人資料尚未提供，請搭配原紙本紀錄核對。`));
+  if(opening.expectedReturn)card.append(node('p',`預計歸還：${opening.expectedReturn}。這只是提醒，實際收車後才更新數量。`));
+  if(opening.note)card.append(node('p',opening.note));
+  for(const event of events){let details=event.details;if(typeof details==='string'){try{details=JSON.parse(details);}catch{details={};}}card.append(node('p',`${date(event.at)} · ${event.actor} · 確認既有借用歸還 ${details?.count??'—'} 台`,'audit'));}
+  if(filter==='borrowed' && (opening.outstanding>0||retry)){
+    const form=node('form');const label=node('label','這次實際收到幾台車？');const input=node('input');input.type='number';input.min='1';input.max=String(Math.max(opening.outstanding,retry?.count||0));input.step='1';input.required=true;input.value=String(retry?.count||openingDraft);input.disabled=!!retry;input.addEventListener('input',()=>openingDraft=Number(input.value));label.append(input);
+    const button=node('button',retry?`重試確認歸還 ${retry.count} 台`:'確認既有借用歸還');button.type='submit';button.disabled=locked()||mutating;form.append(label,button);
+    if(retry)form.append(node('p','上次送出結果待確認；重試會使用相同操作碼，不會重複增加可借車數。','fine'));
+    form.addEventListener('submit',async e=>{e.preventDefault();if(mutating)return;const count=retry?.count||Number(input.value);if(!Number.isSafeInteger(count)||count<1)return;if(!confirm(`確認已實際收到 ${count} 台既有借用的社車？請核對原紙本紀錄。`))return;
+      const operation=retry||{count,requestId:crypto.randomUUID()};
+      try{localStorage.setItem('bike-opening-return',JSON.stringify(operation));}catch{message('action-message','無法保存操作碼，請允許此網站儲存資料後重試。',true);return;}
+      mutating=true;button.disabled=true;
+      try{await api('/api/admin/opening-return',operation,true);localStorage.removeItem('bike-opening-return');openingDraft=1;message('action-message','既有借用歸還已保存。');}
+      catch(err){message('action-message',`${err.message} 已保留操作碼，請更新後重試確認。`,true);}
+      finally{mutating=false;await refresh();showRecords();}
+    });card.append(form);
+  }
+  root.append(card);
+}
