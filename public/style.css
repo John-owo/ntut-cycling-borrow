@@ -29,3 +29,11 @@
 
 header{flex-wrap:wrap}.language-switch{display:flex;gap:2px;margin-left:0}.language-switch button{background:#fff;color:var(--navy);border:1px solid var(--line);padding:5px 10px;min-height:36px;font-size:12px}.language-switch button[aria-pressed=true]{color:#fff;background:var(--navy);border-color:var(--navy)}header .brand{margin-right:auto}html[lang=en] .hero h1{font-size:clamp(36px,4.6vw,58px)}html[lang=en] .notice{grid-template-columns:240px 1fr}html[lang=en] .brand-name>span{display:none}
 @media(max-width:700px){header{gap:8px}.language-switch{margin-left:auto}header .brand{flex:1 1 65%}header>a.admin-link,header>a[href="./index.html"]:not(.brand){font-size:11px}html[lang=en] .hero h1{font-size:38px}html[lang=en] .notice{display:block}html[lang=en] .contact-fields{grid-template-columns:115px 1fr}html[lang=en] .two-columns h2{font-size:24px}}
+
+/* User-requested typography revision: clear upright UI typography. */
+body{font-family:"Segoe UI","PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;-webkit-font-smoothing:antialiased;line-height:1.7}
+h1,h2,h3,.brand,.metrics strong{font-family:inherit;font-style:normal}
+.hero h1{font-style:normal;font-weight:750;letter-spacing:-.035em;line-height:1.22}
+.metrics strong{font-style:normal;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
+.hero-caption{font-style:normal}.eyebrow{font-weight:600;letter-spacing:1.3px}.brand .brand-name{font-weight:700}.brand .brand-name>span{letter-spacing:1.4px;font-weight:600}
+input,select,textarea,button,.button{font-family:inherit}.intro{line-height:1.85}.notice p,.fine,.rules p{line-height:1.85}
