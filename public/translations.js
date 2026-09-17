@@ -3,7 +3,7 @@ export const english = {
   "跳到主要內容": "Skip to content",
   "幹部管理": "Officer desk",
   "NTUT CYCLING / 社車借用": "NTUT CYCLING / CLUB BIKES",
-  "下一段路，": "Your next ride,",
+  "下一段路，": "Your next ride",
   "一起出發。": "starts here.",
   "先登記，再約時間到車庫挑車。": "Register, then arrange a garage visit.",
   "找到適合自己的車，一起出發。": "Find a bike that fits and join the ride.",
@@ -140,5 +140,12 @@ Object.assign(english, {
 '目前狀態不允許此操作':'This action is not allowed for the current status', '目前沒有尚未借出的車輛':'No bikes are available for handover',
 '歸還數量或操作識別碼格式不正確':'Invalid return count or operation ID', '操作識別碼已用於不同歸還數量':'This operation ID was used for a different return count',
 '歸還數量不可超過期初尚未歸還數量':'The return count exceeds the outstanding opening loans',
-'Invalid login credentials':'Invalid login credentials'
+'Invalid login credentials':'Invalid login credentials',
+'選取此筆':'Select this record', '選取':'Select', '全選等候中':'Select all waiting', '清除選取':'Clear selection', '取消選取的登記':'Cancel selected',
+'匯出備份':'Export backup', '備份已下載，檔案內含個資，請妥善保存。':'Backup downloaded. It contains personal data; store it securely.',
+'此帳號不在幹部名單，請聯絡系統管理者。':'This account is not on the officer list. Contact the system administrator.',
+'目前登記人數較多，請一分鐘後再試':'Many people are registering right now. Try again in a minute', '目前登記人數較多，請稍後再試':'Many people are registering right now. Try again later',
+'今日登記次數已達上限，請明天再試或聯絡幹部':'The daily registration limit has been reached. Try again tomorrow or contact an officer',
+'此網路短時間內登記次數過多，請稍後再試':'Too many registrations from this network in a short time. Try again later',
+'取消清單格式不正確':'Invalid cancellation list'
 });

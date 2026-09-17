@@ -56,6 +56,14 @@ SQLite 測試使用真 HTTP 與磁碟資料庫，包含並行最後一台、冪�
 
 本機展示不等於正式社團驗收。Sites 沒有用於此專案的發布。
 
+## 憑證與瀏覽器儲存的安全評估
+
+- 幹部登入後，Supabase 的 access token 與 refresh token 以 `sessionStorage` 保存在瀏覽器；關閉分頁即清除，重新整理不需重登。社員的私人查詢碼保存在 `localStorage`，由本人按「清除此裝置的查詢碼」移除。
+- 兩者的 origin 都是 `https://john-owo.github.io`，與同帳號之後任何其他 GitHub Pages 專案共用。因此本帳號不應再發佈其他 Pages 專案；若日後需要，應改為只在記憶體保存 refresh token（重新整理需重登）或改用獨立網域。
+- 頁面已加入 `<meta http-equiv="Content-Security-Policy">`：只允許同來源腳本與樣式、Supabase 連線，禁止外掛物件與 base 標籤。GitHub Pages 無法自訂回應標頭，因此 `frame-ancestors` 無法設定；幹部頁另加 `noindex`。
+- 沒有任何私密金鑰在前端：`config.js` 只含 publishable key，由 Actions 依變數生成並經 `scripts/pages-config.mjs` 驗證不是 secret key。
+- 個資保留期限與刪除策略尚未實作，由社團決定後再另開 migration；系統不自動刪除任何真實資料。
+
 ## 既有借用
 
 啟用前已借出但尚無社員明細的車，以獨立期初借出數量保存，不建立假學號或假社員。公開已借出為期初尚未歸還加上網站正式借用中的數量。幹部在「借用中」確認每次實際收到的台數，歸還以永久操作識別碼防止重送扣重；預計歸還日不自動更改庫存。未來新增車輛僅在實際到位後修改總數。

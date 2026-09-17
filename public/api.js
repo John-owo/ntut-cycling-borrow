@@ -27,7 +27,7 @@ async function adminToken() {
 }
 export async function api(path, body, admin=false) {
   if(cloud) {
-    const routes={ '/api/admin/opening-return':['admin_return_opening',{p_count:body?.count,p_request_id:body?.requestId}], '/api/summary':['summary',{}], '/api/register':['register',{p_student_id:body?.studentId,p_name:body?.name,p_contact_type:body?.contactType,p_contact:body?.contact,p_token:body?.token}], '/api/me':['lookup',{p_token:body?.token}], '/api/admin/records':['admin_records',{}], '/api/admin/action':['admin_action',{p_id:body?.id,p_action:body?.action,p_bike_note:body?.bikeNote??null}], '/api/admin/settings':['admin_settings',{p_total:body?.total,p_contact_url:body?.contactUrl}] };
+    const routes={ '/api/admin/opening-return':['admin_return_opening',{p_count:body?.count,p_request_id:body?.requestId}], '/api/admin/cancel-many':['admin_cancel_many',{p_ids:body?.ids}], '/api/admin/export':['admin_export',{}], '/api/summary':['summary',{}], '/api/register':['register',{p_student_id:body?.studentId,p_name:body?.name,p_contact_type:body?.contactType,p_contact:body?.contact,p_token:body?.token}], '/api/me':['lookup',{p_token:body?.token}], '/api/admin/records':['admin_records',{}], '/api/admin/action':['admin_action',{p_id:body?.id,p_action:body?.action,p_bike_note:body?.bikeNote??null}], '/api/admin/settings':['admin_settings',{p_total:body?.total,p_contact_url:body?.contactUrl}] };
     const route=routes[path]; if(!route)throw new Error('不支援的操作。');
     return request(`${cfg.supabaseUrl}/rest/v1/rpc/${route[0]}`,{method:'POST',headers:cloudHeaders(admin?await adminToken():undefined),body:JSON.stringify(route[1])});
   }
@@ -37,7 +37,7 @@ export async function api(path, body, admin=false) {
 export async function login(username,password) {
   if(cloud) {const d=await request(`${cfg.supabaseUrl}/auth/v1/token?grant_type=password`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify({email:username,password})});remember({username:d.user.email,token:d.access_token,refreshToken:d.refresh_token,expires:Date.now()+d.expires_in*1000});}
   else remember(await api('/api/admin/login',{username,password}));
-  try { await api('/api/admin/records',undefined,true); } catch(e) {clearAdmin();throw e;}
+  try { await api('/api/admin/records',undefined,true); } catch(e) {clearAdmin();if(e.status===403||e.status===401){const denied=new Error('此帳號不在幹部名單，請聯絡系統管理者。');denied.status=403;throw denied;}throw e;}
 }
 export async function logout() {try { if(cloud)await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(await adminToken())});else await api('/api/admin/logout',{},true); } finally {clearAdmin();} }
 export function safeContact(url) { try {const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;} }

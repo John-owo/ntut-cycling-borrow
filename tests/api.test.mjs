@@ -69,7 +69,7 @@ test('Valid Auth login without officer permission removes the newly obtained ses
  const c=await client(t);
  c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'outsider@example.test',password:'test-only-password'},result:{...authResult(),user:{email:'outsider@example.test'}}});
  c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'test-user-jwt',status:403,result:{message:'Officer permission required'}});
- await assert.rejects(c.api.login('outsider@example.test','test-only-password'),e=>e.status===403&&e.message==='Officer permission required');
+ await assert.rejects(c.api.login('outsider@example.test','test-only-password'),e=>e.status===403&&e.message==='此帳號不在幹部名單，請聯絡系統管理者。');
  assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.has('bike-admin-session'),false);
  await assert.rejects(c.api.api('/api/admin/settings',{total:2,contactUrl:''},true),e=>e.status===401);c.done();
 });
@@ -80,3 +80,12 @@ test('Rejected refresh token clears the old session and sends no administrator R
  await assert.rejects(c.api.api('/api/admin/records',undefined,true),e=>e.status===401&&e.message==='Refresh token revoked');
  assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.size,0);c.done();
 });
+
+test('Officer bulk cancel and export map to the 003 RPCs with the user JWT',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'officer-jwt',refreshToken:'r',expires:Date.now()+3600000});
+ c.expect({path:'/rest/v1/rpc/admin_cancel_many',body:{p_ids:[4,9]},token:'officer-jwt',result:{cancelled:[4,9],skipped:[]}});
+ assert.deepEqual((await c.api.api('/api/admin/cancel-many',{ids:[4,9]},true)).cancelled,[4,9]);
+ c.expect({path:'/rest/v1/rpc/admin_export',body:{},token:'officer-jwt',result:{records:[]}});
+ assert.deepEqual(await c.api.api('/api/admin/export',undefined,true),{records:[]});c.done();
+});
+

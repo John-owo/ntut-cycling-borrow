@@ -21,6 +21,9 @@ const patterns=[
  [/^(確認借出|確認歸還|取消登記)已保存。$/,m=>`${english[m[1]]}: saved.`],
  [/^(.+) · (.+) · (確認借出|確認歸還|取消登記|lend|return|cancel)$/,m=>`${m[1]} · ${m[2]} · ${english[m[3]]||m[3]}`],
  [/^(.+) · (.+) · 確認既有借用歸還 (.+) 台$/,m=>`${m[1]} · ${m[2]} · Opening-loan return: ${m[3]} bikes`],
+ [/^已選取 (\d+) 筆$/,m=>`${m[1]} selected`],
+ [/^確認取消 (\d+) 筆等候登記？這不會改變已借出車數。$/,m=>`Cancel ${m[1]} waiting registrations? The on-loan count will not change.`],
+ [/^已取消 (\d+) 筆登記(?:，(\d+) 筆已不在等候中)?。$/,m=>`Cancelled ${m[1]} registrations${m[2]?`; ${m[2]} were no longer waiting`:''}.`],
  [/^車號／備註：([\s\S]*)$/,m=>`Bike / notes: ${m[1]}`],
  [/^查詢失敗：([\s\S]*)$/,m=>`Lookup failed: ${translate(m[1])}`],
  [/^更新失敗：([\s\S]*)，資料可能已過期。$/,m=>`Update failed: ${translate(m[1])}. Data may be out of date.`],
@@ -36,7 +39,7 @@ export function confirmLocalized(text){return window.confirm(translate(text));}
 const originals=new WeakMap(),attributes=new WeakMap();
 function render(){observer.disconnect();document.documentElement.lang=language==='en'?'en':'zh-Hant';document.title=language==='en'?(document.body.classList.contains('admin-page')?'Officer desk | NTUT Cycling Club':'Bike registration | NTUT Cycling Club'):(document.body.classList.contains('admin-page')?'幹部管理｜北科大自由車社':'借車登記｜北科大自由車社');
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n;
- while(n=walker.nextNode()){if(n.parentElement?.closest('script,style,code,textarea,dd,.record-head h3,.record-head p,[data-no-translate],.user-content,.language-switch'))continue;
+ while(n=walker.nextNode()){if(n.parentElement?.closest('script,style,code,textarea,dd,.record-head h3,[data-no-translate],.user-content,.language-switch'))continue;
  const previous=originals.get(n);const source=previous&&n.data===previous.rendered?previous.source:n.data;const rendered=translate(source);originals.set(n,{source,rendered});if(n.data!==rendered)n.data=rendered;}
  document.querySelectorAll('[placeholder],[aria-label]').forEach(el=>{const stored=attributes.get(el)||{};for(const attr of ['placeholder','aria-label']){if(!el.hasAttribute(attr))continue;const current=el.getAttribute(attr),old=stored[attr];const source=old&&current===old.rendered?old.source:current;const rendered=translate(source);stored[attr]={source,rendered};if(current!==rendered)el.setAttribute(attr,rendered);}attributes.set(el,stored);});
  document.querySelectorAll('[data-language]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.language===language)));
