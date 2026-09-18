@@ -90,3 +90,34 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
 });
 
 function remainingToken(a,b,winner){return winner.studentId===a.studentId?b.token:a.token;}
+
+test('Borrowed adjustment: authenticated, bounded, stale-safe and permanent retries preserve member records',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'bike-adjustment-'));const dbPath=join(dir,'db.sqlite');let app,base,bearer;
+ const start=async()=>{app=createApp({dbPath});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
+ const call=async(path,body,admin=true)=>{const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${bearer}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,...await r.json()};};
+ let seq=100;const form=(borrowed,expectedBorrowed=3,expectedOpening=2)=>({borrowed,expectedBorrowed,expectedOpening,requestId:`00000000-0000-4000-8000-${String(seq++).padStart(12,'0')}`,reason:'  盤點更正  '});
+ try{
+ await start();app.addAdmin('officer','test-password-123');bearer=(await call('/api/admin/login',{username:'officer',password:'test-password-123'},false)).token;
+ assert.equal((await call('/api/admin/borrowed',form(1))).status,409); // unset inventory
+ await call('/api/admin/settings',{total:5,contactUrl:''});
+ const member=await call('/api/register',{studentId:'REAL',name:'Member',contactType:'line',contact:'test',token:'a'.repeat(64)},false);
+ await call('/api/admin/action',{id:member.record.id,action:'lend',bikeNote:'original'});
+ app.db.exec('UPDATE opening_loans SET outstanding=2 WHERE id=1');
+ const original=app.db.prepare('SELECT * FROM records').all();
+ assert.equal((await call('/api/admin/borrowed',form(4),false)).status,401);
+ for(const v of [-1,1.5,'4',6,0])assert.equal((await call('/api/admin/borrowed',form(v))).status,typeof v==='number'&&Number.isInteger(v)&&v>=0?409:400);
+ for(const reason of ['', ' '.repeat(5),'x'.repeat(501)])assert.equal((await call('/api/admin/borrowed',{...form(4),reason})).status,400);
+ assert.equal((await call('/api/admin/borrowed',form(4,2,2))).status,409);
+ assert.equal((await call('/api/admin/borrowed',form(4,3,1))).status,409);
+ const first=form(4);const changed=await call('/api/admin/borrowed',first);assert.equal(changed.status,200);assert.equal(changed.opening.outstanding,3);assert.equal(changed.summary.available,1);assert.equal(changed.receipt.reason,'盤點更正');
+ await app.close();await start();
+ const replay=await call('/api/admin/borrowed',first);assert.deepEqual(replay.receipt,changed.receipt);
+ for(const change of [{borrowed:5},{expectedBorrowed:4},{expectedOpening:3},{reason:'different'}])assert.equal((await call('/api/admin/borrowed',{...first,...change})).status,409);
+ const races=await Promise.all([call('/api/admin/borrowed',form(2,4,3)),call('/api/admin/borrowed',form(3,4,3))]);
+ assert.deepEqual(races.map(r=>r.status).sort(),[200,409]);
+ assert.deepEqual(app.db.prepare('SELECT * FROM records').all(),original);
+ const current=await call('/api/admin/records');const zeroOpening=await call('/api/admin/borrowed',form(1,current.summary.borrowed,current.opening.outstanding));assert.equal(zeroOpening.opening.outstanding,0);
+ const dump=await call('/api/admin/export');assert.equal(dump.borrowedAdjustments.length,3);assert.equal(dump.audit.filter(a=>a.action==='borrowed-adjustment').length,3);
+ assert.deepEqual(JSON.parse(dump.borrowedAdjustments.find(a=>a.requestId===first.requestId).receipt),changed.receipt);
+ }finally{await app?.close();rmSync(dir,{recursive:true,force:true});}
+});

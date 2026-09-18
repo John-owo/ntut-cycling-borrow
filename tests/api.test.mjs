@@ -89,3 +89,13 @@ test('Officer bulk cancel and export map to the 003 RPCs with the user JWT',asyn
  assert.deepEqual(await c.api.api('/api/admin/export',undefined,true),{records:[]});c.done();
 });
 
+
+test('Borrowed adjustments preserve concurrency snapshot, reason and retry identity in officer RPC',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'officer-jwt',refreshToken:'r',expires:Date.now()+3600000});
+ const operation={borrowed:4,expectedBorrowed:3,expectedOpening:2,requestId:'00000000-0000-4000-8000-000000000100',reason:'Paper count correction'};
+ for(let i=0;i<2;i++){
+  c.expect({path:'/rest/v1/rpc/admin_set_borrowed',body:{p_borrowed:4,p_expected_borrowed:3,p_expected_opening:2,p_request_id:operation.requestId,p_reason:operation.reason},token:'officer-jwt',result:{summary:{borrowed:4}}});
+  assert.equal((await c.api.api('/api/admin/borrowed',operation,true)).summary.borrowed,4);
+ }
+ c.done();
+});

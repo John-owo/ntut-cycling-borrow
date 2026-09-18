@@ -2,6 +2,7 @@ import {english} from './translations.js';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const patterns=[
+ [/^線上借用 (\d+) 台，未建明細 (\d+) 台；可設定範圍 (\d+)～(\d+) 台。$/,m=>`Online loans: ${m[1]}; loans without details: ${m[2]}. Allowed range: ${m[3]}–${m[4]} bikes.`],
  [/^更新於 (.+)$/,m=>`Updated ${m[1]}`],
  [/^目前登入：(.+)$/,m=>`Signed in: ${m[1]}`],
  [/^排隊第 (\d+) 位$/,m=>`Queue position ${m[1]}`],

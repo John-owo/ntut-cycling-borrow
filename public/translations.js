@@ -149,3 +149,23 @@ Object.assign(english, {
 '此網路短時間內登記次數過多，請稍後再試':'Too many registrations from this network in a short time. Try again later',
 '取消清單格式不正確':'Invalid cancellation list'
 });
+
+Object.assign(english, {
+'調整已借出數量':'Adjust on-loan count',
+'未建社員明細的借用':'Loans without member details',
+'依實際盤點填入已借出總數。線上借用紀錄會保留，差額記為未建明細的借用；有社員明細的歸還請在「借用中」操作。':'Enter the actual on-loan total. Online loan records are preserved; the difference represents loans without member details. Return recorded member loans under On loan.',
+'已借出總數':'Total on loan', '調整原因':'Reason for adjustment',
+'例如：核對紙本借用紀錄後修正':'For example: corrected after checking paper loan records',
+'儲存已借出數量':'Save on-loan count', '重新載入數量':'Reload current count',
+'重試確認數量':'Retry count adjustment',
+'上次調整結果待確認，請按「重試確認數量」。重試不會重複修改。':'The previous result is unconfirmed. Retry the count adjustment; it will not be applied twice.',
+'請輸入整數車數與調整原因。':'Enter a whole number and an adjustment reason.',
+'已借出數量已保存。':'On-loan count saved.',
+'已借出數量或操作識別碼格式不正確':'Invalid on-loan count or operation ID',
+'調整原因格式不正確':'Invalid adjustment reason',
+'操作識別碼已用於不同調整內容':'This operation ID was used for a different adjustment',
+'已借出數量不可超過總車數':'The on-loan count cannot exceed the bike total',
+'已借出數量不可低於社員借用紀錄數量':'The on-loan count cannot be lower than recorded member loans',
+'數量已變更，請重新載入後再調整':'Counts have changed. Reload before adjusting them',
+'已借出數量、調整原因或操作識別碼格式不正確':'Invalid on-loan count, reason, or operation ID'
+});

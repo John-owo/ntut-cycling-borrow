@@ -1,11 +1,12 @@
 import {confirmLocalized} from './i18n.js';
 import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date} from './api.js';
 const $=id=>document.getElementById(id);let data=null,filter='waiting',refreshing=false,lastSuccess=0,pending=null,mutating=false,settingsDirty=false,authGeneration=0;
+let borrowedDirty=false,borrowedSnapshot=null,refreshTask=null;
 const names={waiting:'等候中',borrowed:'借用中',returned:'已歸還',cancelled:'已取消'};const actions={lend:'確認借出',return:'確認歸還',cancel:'取消登記'};const contactNames={phone:'手機',line:'LINE',instagram:'Instagram'};const selected=new Set();let waitingCount=0;
 function message(id,text,error=false){$(id).textContent=text;$(id).classList.toggle('error',error);}
 function locked(){return !lastSuccess||Date.now()-lastSuccess>45000;}
-function signedOut(){authGeneration++;data=null;lastSuccess=0;$('workspace').hidden=true;$('login-panel').hidden=false;$('records').replaceChildren();$('identity').textContent='';$('action-dialog').close();$('action-form').reset();$('settings-form').reset();settingsDirty=false;}
-function showRecords(){const root=$('records');root.replaceChildren();showOpening(root);const rows=(data?.records||[]).filter(r=>filter==='history'?['returned','cancelled'].includes(r.status):r.status===filter);
+function signedOut(){authGeneration++;data=null;lastSuccess=0;$('workspace').hidden=true;$('login-panel').hidden=false;$('records').replaceChildren();$('identity').textContent='';$('action-dialog').close();$('action-form').reset();$('settings-form').reset();settingsDirty=false;borrowedDirty=false;borrowedSnapshot=null;$('borrowed-form').reset();message('borrowed-message','');$('borrowed-history').replaceChildren();}
+function showRecords(){renderBorrowed();const root=$('records');root.replaceChildren();showOpening(root);const rows=(data?.records||[]).filter(r=>filter==='history'?['returned','cancelled'].includes(r.status):r.status===filter);
  if(filter==='waiting'){const ids=new Set(rows.map(r=>r.id));for(const id of selected)if(!ids.has(id))selected.delete(id);waitingCount=rows.length;if(rows.length>1)root.append(bulkBar(rows));}else selected.clear();
  if(!rows.length){root.append(node('p',filter==='waiting'?'目前沒有等候登記。':filter==='borrowed'?(data?.opening?.outstanding>0?'目前沒有線上登記的借用紀錄；既有借出請見上方。':'目前沒有借用中的車輛。'):'目前沒有已歸還或取消的紀錄。','empty'));return;}
  for(const r of rows){const card=node('article',undefined,'record');const head=node('div',undefined,'record-head');const person=node('div');person.append(node('h3',`${r.name} · ${r.studentId}`));const contact=node('p',undefined,'contact');contact.append(node('span',contactNames[r.contactType]||r.contactType,'contact-type'),node('span',r.contact,'user-content'));person.append(contact);
@@ -21,7 +22,12 @@ async function bulkCancel(){if(mutating||!selected.size)return;const ids=[...sel
  catch(err){message('action-message',`${err.message} 請更新清單確認狀態後再操作。`,true);}
  finally{mutating=false;await refresh();showRecords();}}
 function render(next){data=next;lastSuccess=Date.now();$('workspace').hidden=false;$('login-panel').hidden=true;$('identity').textContent=`目前登入：${currentAdmin()}`;for(const key of ['total','borrowed','available','waiting'])$(key).textContent=next.summary[key]??'待設定';message('sync-status',`更新於 ${new Date().toLocaleTimeString('zh-TW',{hour12:false})}`);if(!settingsDirty){$('settings-form').elements.total.value=next.summary.total??'';$('settings-form').elements.contactUrl.value=next.summary.contactUrl||'';}showRecords();}
-async function refresh(){if(refreshing||!currentAdmin())return;refreshing=true;const generation=authGeneration;try{const result=await api('/api/admin/records',undefined,true);if(generation!==authGeneration||!currentAdmin())return;render(result);}catch(e){if(generation!==authGeneration)return;message('sync-status',`更新失敗：${e.message}，資料可能已過期。`,true);lastSuccess=0;showRecords();if(e.status===401||e.status===403){clearAdmin();signedOut();message('login-message','登入失效或沒有幹部權限，請重新登入。',true);}}finally{refreshing=false;}}
+function refresh(){
+ if(refreshing||!currentAdmin())return refreshTask;
+ refreshing=true;const generation=authGeneration;
+ refreshTask=(async()=>{try{const result=await api('/api/admin/records',undefined,true);if(generation!==authGeneration||!currentAdmin())return;render(result);}catch(e){if(generation!==authGeneration)return;message('sync-status',`更新失敗：${e.message}，資料可能已過期。`,true);lastSuccess=0;showRecords();if(e.status===401||e.status===403){clearAdmin();signedOut();message('login-message','登入失效或沒有幹部權限，請重新登入。',true);}}finally{refreshing=false;}})();
+ return refreshTask;
+}
 $('login-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.currentTarget.querySelector('button');button.disabled=true;const f=new FormData(e.currentTarget);try{await login(f.get('username'),f.get('password'));$('login-form').reset();message('login-message','');await refresh();}catch(err){message('login-message',err.message,true);}finally{button.disabled=false;}});
 $('export').addEventListener('click',async()=>{const button=$('export');button.disabled=true;try{const dump=await api('/api/admin/export',undefined,true);const blob=new Blob([JSON.stringify(dump,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ntut-cycling-borrow-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);message('action-message','備份已下載，檔案內含個資，請妥善保存。');await refresh();}catch(err){message('action-message',err.message,true);}finally{button.disabled=false;}});
 $('logout').addEventListener('click',async()=>{try{await logout();}catch{message('login-message','此裝置已登出；遠端登出未確認，請勿在共用裝置保留登入。',true);}finally{signedOut();}});
@@ -42,7 +48,7 @@ function showOpening(root) {
   const events=(data.audit||[]).filter(a=>a.action==='opening-return');
   const retry=pendingOpening();
   if(!opening || (!(opening.outstanding>0)&&!events.length&&!retry)) return;
-  const card=node('article',undefined,'record');card.append(node('h3','系統啟用前的既有借用'),node('p',`尚未歸還 ${opening.outstanding} 台。借用人資料尚未提供，請搭配原紙本紀錄核對。`));
+  const card=node('article',undefined,'record');card.append(node('h3','未建社員明細的借用'),node('p',`尚未歸還 ${opening.outstanding} 台。借用人資料尚未提供，請搭配原紙本紀錄核對。`));
   if(opening.expectedReturn)card.append(node('p',`預計歸還：${opening.expectedReturn}。這只是提醒，實際收車後才更新數量。`));
   if(opening.note)card.append(node('p',opening.note,'user-content'));
   for(const event of events){let details=event.details;if(typeof details==='string'){try{details=JSON.parse(details);}catch{details={};}}card.append(node('p',`${date(event.at)} · ${event.actor} · 確認既有借用歸還 ${details?.count??'—'} 台`,'audit'));}
@@ -61,3 +67,44 @@ function showOpening(root) {
   }
   root.append(card);
 }
+
+// Keep the count a server-derived sum; corrections change only loans without member details.
+function borrowedKey(){return `bike-borrowed-adjustment:${location.pathname}:${currentAdmin()}`;}
+function pendingBorrowed(){try{return JSON.parse(localStorage.getItem(borrowedKey())||'null');}catch{return null;}}
+function renderBorrowed(){
+ if(!data)return;
+ if(!borrowedSnapshot)borrowedSnapshot={expectedBorrowed:data.summary.borrowed,expectedOpening:data.opening.outstanding};
+ const form=$('borrowed-form'),retry=pendingBorrowed(),online=data.summary.borrowed-data.opening.outstanding;
+ $('borrowed-breakdown').textContent=`線上借用 ${online} 台，未建明細 ${data.opening.outstanding} 台；可設定範圍 ${online}～${data.summary.total??0} 台。`;
+ if(retry){form.elements.borrowed.value=retry.borrowed;form.elements.reason.value=retry.reason;}
+ else if(!borrowedDirty){form.elements.borrowed.value=data.summary.borrowed;borrowedSnapshot={expectedBorrowed:data.summary.borrowed,expectedOpening:data.opening.outstanding};}
+ form.elements.borrowed.min=String(retry?0:online);form.elements.borrowed.max=String(retry?10000:data.summary.total??0);
+ form.elements.borrowed.disabled=!!retry||mutating;form.elements.reason.disabled=!!retry||mutating;
+ $('borrowed-save').textContent=retry?'重試確認數量':'儲存已借出數量';
+ $('borrowed-save').disabled=locked()||mutating||data.summary.total===null;
+ $('borrowed-reset').disabled=mutating||!!retry;
+ if(retry&&!mutating)message('borrowed-message','上次調整結果待確認，請按「重試確認數量」。重試不會重複修改。');
+ const history=$('borrowed-history');history.replaceChildren();
+ for(const event of (data.audit||[]).filter(a=>a.action==='borrowed-adjustment').slice(0,5)){
+  let d=event.details;try{if(typeof d==='string')d=JSON.parse(d);}catch{continue;}
+  const item=node('p',undefined,'audit');item.append(node('span',`${date(event.at)} · ${event.actor} · ${d.oldBorrowed} → ${d.newBorrowed} `),node('span',d.reason,'user-content'));history.append(item);
+ }
+}
+$('borrowed-form').addEventListener('input',()=>borrowedDirty=true);
+$('borrowed-reset').addEventListener('click',async()=>{if(mutating||pendingBorrowed())return;borrowedDirty=false;$('borrowed-form').reset();message('borrowed-message','');await refresh();});
+$('borrowed-form').addEventListener('submit',async e=>{
+ e.preventDefault();if(mutating||locked()||!borrowedSnapshot)return;
+ const form=e.currentTarget,retry=pendingBorrowed(),borrowed=Number(form.elements.borrowed.value),reason=form.elements.reason.value.trim();
+ if(!retry&&(!Number.isSafeInteger(borrowed)||!reason)){message('borrowed-message','請輸入整數車數與調整原因。',true);return;}
+ const operation=retry||{borrowed,...borrowedSnapshot,reason,requestId:crypto.randomUUID()},key=borrowedKey(),generation=authGeneration;
+ try{localStorage.setItem(key,JSON.stringify(operation));}catch{message('borrowed-message','無法保存操作碼，請允許此網站儲存資料後重試。',true);return;}
+ mutating=true;showRecords();
+ try{
+  await api('/api/admin/borrowed',operation,true);localStorage.removeItem(key);
+  if(generation===authGeneration){borrowedDirty=false;form.reset();message('borrowed-message','已借出數量已保存。');}
+ }catch(err){
+  // A validation/conflict response means this attempt did not write. Unknown outcomes retain the exact operation for retry.
+  if([400,409,422].includes(err.status)){localStorage.removeItem(key);borrowedDirty=false;}
+  if(generation===authGeneration)message('borrowed-message',`${err.message} 請更新清單確認狀態後再操作。`,true);
+ }finally{await refreshTask;mutating=false;if(generation===authGeneration){await refresh();showRecords();}}
+});
