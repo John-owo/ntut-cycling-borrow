@@ -50,6 +50,8 @@ npm.cmd ci
 npm.cmd test
 ```
 
+`tests/security.test.mjs` 為資安回歸測試：Host 允許清單（防 DNS rebinding）、登入專用限流、回應標頭、session 清理、公開檔案不含私密金鑰與 inline script、i18n 不解析原型屬性。本機服務可用 `ALLOWED_HOSTS`（逗號分隔）補充 127.0.0.1／localhost 以外的合法主機名稱。CI 在測試前執行 `npm audit --audit-level=high`。
+
 SQLite 測試使用真 HTTP 與磁碟資料庫，包含並行最後一台、冪等、取消、歸還、越序交車、資料保存與權限。PostgreSQL 測試使用 PGlite 真 PostgreSQL 引擎執行 migration 與角色隔離；Auth 的使用者身分在測試內模擬，並非 Supabase Auth 的 live 驗證。PGlite 單連線不等於雲端跨連線併發證據。
 
 正式上線前待驗證：Supabase Auth 登入、Data API grants、兩位管理員實際權限、GitHub Pages 跨裝置連線、正式資料備份與復原安排。免費服務額度與暫停政策依供應商當時規則；未啟用任何付費方案。公開登記沒有學籍驗證；同學號去重不代表身分已核驗。操作紀錄限幹部查看，請由社團決定適當的資料保留期間。
@@ -57,6 +59,8 @@ SQLite 測試使用真 HTTP 與磁碟資料庫，包含並行最後一台、冪�
 本機展示不等於正式社團驗收。Sites 沒有用於此專案的發布。
 
 ## 憑證與瀏覽器儲存的安全評估
+
+完整的資安假設、驗證模型、設定與剩餘風險以 `SECURITY.md` 為準；本節為摘要。
 
 - 幹部登入後，Supabase 的 access token 與 refresh token 以 `sessionStorage` 保存在瀏覽器；關閉分頁即清除，重新整理不需重登。社員的私人查詢碼保存在 `localStorage`，由本人按「清除此裝置的查詢碼」移除。
 - 兩者的 origin 都是 `https://john-owo.github.io`，與同帳號之後任何其他 GitHub Pages 專案共用。因此本帳號不應再發佈其他 Pages 專案；若日後需要，應改為只在記憶體保存 refresh token（重新整理需重登）或改用獨立網域。

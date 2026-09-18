@@ -34,7 +34,7 @@ const patterns=[
  [/^([\s\S]*) 已保留操作碼，請更新後重試確認。$/,m=>`${translate(m[1])} The operation ID was kept. Refresh and retry.`],
  [/^([\s\S]*) 若剛才送出後斷線，請先用上方查詢碼查詢，避免重複登記。$/,m=>`${translate(m[1])} If you lost connection after submitting, check using the code above before registering again.`],
 ];
-export function translate(text){if(language!=='en')return text;const key=text.trim();if(english[key])return text.replace(key,english[key]);for(const [regex,render]of patterns){const m=key.match(regex);if(m)return render(m);}return text;}
+export function translate(text){if(language!=='en')return text;const key=text.trim();if(Object.hasOwn(english,key))return text.replace(key,english[key]);for(const [regex,render]of patterns){const m=key.match(regex);if(m)return render(m);}return text;}
 export function confirmLocalized(text){return window.confirm(translate(text));}
 // Preserve the original strings and DOM nodes: switching never resets form values.
 const originals=new WeakMap(),attributes=new WeakMap();
