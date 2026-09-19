@@ -2,7 +2,7 @@
 
 北科大自由車社借車系統的資安假設、驗證模型、敏感元件、目前設定、已知剩餘風險與開發原則。
 本文件為資安相關規範的權威來源；`README.md`、`supabase/README.md` 的相關段落為摘要，若有出入以本文件為準。
-最後一次完整檢視：2026-09-19。
+最後一次完整檢視：2026-09-20（第二輪深入檢查）。
 
 ## 1. 系統邊界與攻擊者模型
 
@@ -45,7 +45,8 @@
 
 ### 輸入驗證與資料一致性
 - 學號 `^[a-zA-Z0-9-]{1,30}$` 去頭尾空白轉大寫；姓名≤80、聯絡≤200、備註／原因≤500，拒絕控制字元；`contactType` 白名單 `phone|line|instagram`；聯絡入口只接受 `https://`。
-- 本機 API 用 `exact()` 拒絕多餘欄位（防 mass assignment），JSON 本文上限 8 KB，`Content-Type` 必須是 `application/json`（415）。
+- 本機 API 用 `exact()` 拒絕多餘欄位（防 mass assignment），JSON 本文上限 8 KB，`Content-Type` 必須是 `application/json`（415）。本文以 `Buffer.concat` 後一次解碼，跨 TCP 分段的中文字不會被寫成替代字元。
+- 聯絡入口在前端 `safeContact()` 與本機 `admin/settings` 都拒絕帶帳密（userinfo）的 URL；SQL 端只檢查 `https://` 前綴，前端顯示時仍會再過濾。
 - 所有異動先鎖定 `private.settings` 單列（`for update`）／SQLite `BEGIN IMMEDIATE`，庫存由紀錄計算，不維護可漂移的計數。
 - 交車、歸還、取消、期初歸還、已借出數量調整皆冪等；後兩者以前端 UUID 為操作識別碼，同 ID 不同內容回 409。
 
@@ -56,7 +57,10 @@
 
 ### 瀏覽器端
 - 所有 DOM 皆以 `textContent`／`createElement` 建立；`tests/security.test.mjs` 禁止 `innerHTML`、`insertAdjacentHTML`、`document.write`、`eval`、inline script 與 inline event handler。
-- `index.html`、`admin.html` 的 meta CSP：`default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'`。
+- `index.html`、`admin.html` 的 meta CSP：`default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'; require-trusted-types-for 'script'`。最後一項讓 Chromium 在瀏覽器層直接封鎖 `innerHTML`、`eval` 等 DOM XSS sink（已在隔離 QA 驗證應用本身零違規）；Firefox／Safari 忽略此指令，仍靠程式碼規範。
+- 幹部頁 `admin.js` 開頭檢查 `window.self!==window.top`，被嵌入其他網站時隱藏頁面、嘗試跳出並停止執行；這是 Pages 無法送 `frame-ancestors` 時的替代防護。
+- 幹部頁閒置 30 分鐘（無指標／鍵盤／觸控／滾輪事件）自動登出並清除 `sessionStorage`，避免共用裝置上的輪詢無限延長 session。
+- 以有效 Auth 帳號登入但不在幹部名單時，前端會呼叫 `/auth/v1/logout` 撤銷剛取得的 session，而不只是清除本機儲存。
 - `<meta name="referrer" content="no-referrer">`；外部聯絡連結經 `safeContact()` 只放行不含帳密的 HTTPS，並加 `rel="noopener noreferrer"`。
 - i18n 查表使用 `Object.hasOwn`，使用者輸入（如姓名 `constructor`）不會解析到原型屬性。
 - `github.io` 在 HSTS preload 清單內，正式站一律 HTTPS。GitHub Pages 無法自訂回應標頭，因此 `frame-ancestors`、`Permissions-Policy` 等無法在正式站設定（見第 6 節）。
@@ -70,7 +74,7 @@
 - 正式站由 Supabase 處理 CORS；只用 bearer token，不用 cookie，因此沒有 CSRF 面。
 
 ### 供應鏈與 CI
-- 無 production 依賴；唯一 dev 依賴 `@electric-sql/pglite` 已 lock。CI 執行 `npm ci`、`npm audit --audit-level=high`、`npm test` 後才發布。
+- 無 production 依賴；唯一 dev 依賴 `@electric-sql/pglite` 已 lock。CI 執行 `npm ci`、`npm audit --audit-level=high`、`npm test` 後才發布。`pull_request` 也會跑 validate（Dependabot 更新先經測試），但 deploy 只在 push 到 main 時執行。
 - Actions 全部釘 SHA；`permissions: contents: read`，deploy job 才有 `pages: write`／`id-token: write`。Dependabot 監看 npm 與 github-actions。
 - GitHub 倉庫：main ruleset 禁止刪除與 force push，secret scanning + push protection 啟用，Actions 限 GitHub 官方與 verified creators。
 
@@ -84,7 +88,7 @@ npm.cmd test
 - `tests/postgres.test.mjs`：以 PGlite 真 PostgreSQL 執行 001–004，驗證 anon／非幹部／幹部三種身分的 grants 與 RLS、`search_path` 硬化、查詢碼隔離、節流、冪等與 audit。
 - `tests/backend.test.mjs`：本機 HTTP＋SQLite，涵蓋權限、並行最後一台、重啟後冪等、匯出、批次取消、節流。
 - `tests/api.test.mjs`：前端 adapter 只用 publishable key 呼叫匿名 RPC、幹部 JWT 不外洩到公開呼叫、refresh 與拒絕流程。
-- `tests/security.test.mjs`：本文件第 4 節的回歸測試（Host、登入限流、標頭、session、靜態檔白名單、公開檔案衛生、i18n）。
+- `tests/security.test.mjs`：本文件第 4 節的回歸測試（Host、登入限流、標頭與 Trusted Types、session、聯絡連結 userinfo、跨分段 UTF-8 本文、靜態檔白名單、公開檔案衛生、防嵌入與閒置登出存在、workflow 觸發與 SHA 釘定、i18n）。
 
 這些測試不證明：Supabase 託管環境的多連線並行、真 Auth 登入、GitHub Pages 實際回應標頭。正式驗收見 README「驗證與限制」。
 
@@ -93,7 +97,9 @@ npm.cmd test
 | 項目 | 說明 | 處理方式 |
 | --- | --- | --- |
 | Refresh token 存 `sessionStorage` | 同一 origin `john-owo.github.io` 上任何其他 Pages 專案若有 XSS 即可讀取。 | 既定決策：此帳號不再發布其他 Pages 專案；日後若需要，改為僅記憶體保存或獨立網域。 |
-| 正式站無法設定回應標頭 | GitHub Pages 不支援 `frame-ancestors`、`Permissions-Policy`、COOP。點擊劫持只能靠幹部頁需登入且無跨站可觸發的單鍵操作來緩解。 | 若日後改用可設標頭的託管（Cloudflare Pages／自有網域），把第 4 節本機標頭搬過去。 |
+| 正式站無法設定回應標頭 | GitHub Pages 不支援 `frame-ancestors`、`Permissions-Policy`、COOP。點擊劫持目前靠 `admin.js` 的 JS 防嵌入與二次確認對話框緩解，JS 防護在 `sandbox` iframe 中仍可隱藏頁面，但不等於標頭。 | 若日後改用可設標頭的託管（Cloudflare Pages／自有網域），把第 4 節本機標頭搬過去。 |
+| 幹部頁 localStorage 鍵名含幹部 email | 已借出數量調整的待重試操作以 `bike-borrowed-adjustment:<路徑>:<email>` 為鍵，登出後鍵名仍可能留在共用裝置。只揭露曾使用的幹部信箱，不含憑證。 | Informational；若要消除可改為雜湊鍵名。 |
+| 使用者文字未過濾 Unicode 方向控制字元 | 姓名／備註可含 U+202E 等雙向覆寫字元，只影響幹部頁顯示順序，不能執行程式。SQL 與本機都已拒絕 ASCII 控制字元。 | Low；需要時在 `register()` 與本機 `text()` 同步加入 `\p{Cf}` 拒絕（需 migration）。 |
 | 學號存在性可被探測 | `register()` 對已有效登記的學號回明確訊息，是社員自助的必要功能。 | 受註冊節流限制（每來源 10 次／10 分、全站 300／日）；接受為 Informational。 |
 | 節流來源 IP 依賴代理標頭 | `private.client_hash()` 依序信任 `cf-connecting-ip`、`x-real-ip`、`x-forwarded-for` 最後一段。Supabase 位於 Cloudflare 後方時第一項可信；若供應商架構改變，per-client 節流可被偽造，全站上限仍有效。 | 觀察 Supabase 架構變動；必要時另開 migration 調整順序。 |
 | 匿名 `summary()`／`lookup()` 無限流 | 每次呼叫成本低，但免費方案有配額；大量呼叫屬資源耗盡而非資料外洩。 | 依實際流量在 Supabase 設定 API rate limit／CAPTCHA；不在本專案內宣稱已解決。 |

@@ -106,6 +106,7 @@ export const english = {
   "目前沒有已歸還或取消的紀錄。": "No returned or cancelled records yet.",
   "登入失效或沒有幹部權限，請重新登入。": "Your session expired or this account lacks officer access. Sign in again.",
   "此裝置已登出；遠端登出未確認，請勿在共用裝置保留登入。": "Signed out on this device. Remote sign-out was not confirmed. Do not leave sessions on shared devices.",
+  "閒置超過 30 分鐘，已自動登出。": "Signed out automatically after 30 minutes of inactivity.",
   "設定已保存。": "Settings saved.",
   "目前離線，資料可能已過期。": "You are offline. Data may be out of date.",
   "資料未更新，請更新後再操作。": "Data is out of date. Refresh before taking action.",

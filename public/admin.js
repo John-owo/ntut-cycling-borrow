@@ -1,5 +1,7 @@
 import {confirmLocalized} from './i18n.js';
 import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date} from './api.js';
+// GitHub Pages cannot send frame-ancestors, so the officer desk refuses to run inside another site's frame (clickjacking defense in depth).
+if(window.self!==window.top){document.documentElement.hidden=true;try{window.top.location.replace(location.href);}catch{}throw new Error('Officer desk must not be framed');}
 const $=id=>document.getElementById(id);let data=null,filter='waiting',refreshing=false,lastSuccess=0,pending=null,mutating=false,settingsDirty=false,authGeneration=0;
 let borrowedDirty=false,borrowedSnapshot=null,refreshTask=null;
 const names={waiting:'等候中',borrowed:'借用中',returned:'已歸還',cancelled:'已取消'};const actions={lend:'確認借出',return:'確認歸還',cancel:'取消登記'};const contactNames={phone:'手機',line:'LINE',instagram:'Instagram'};const selected=new Set();let waitingCount=0;
@@ -38,6 +40,10 @@ $('action-form').addEventListener('submit',async e=>{e.preventDefault();if(!pend
 $('settings-form').addEventListener('input',()=>settingsDirty=true);$('settings-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.currentTarget.querySelector('button');button.disabled=true;const f=new FormData(e.currentTarget);try{await api('/api/admin/settings',{total:Number(f.get('total')),contactUrl:f.get('contactUrl').trim()},true);settingsDirty=false;message('settings-message','設定已保存。');await refresh();}catch(err){message('settings-message',err.message,true);}finally{button.disabled=false;}});
 if(cloud){$('username-label').firstChild.textContent='管理員電子郵件';$('login-form').elements.username.type='email';}
 window.addEventListener('offline',()=>{lastSuccess=0;message('sync-status','目前離線，資料可能已過期。',true);showRecords();});window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});setInterval(()=>{if(!document.hidden)refresh();},15000);setInterval(()=>{if(currentAdmin()&&locked()){message('sync-status','資料未更新，請更新後再操作。',true);showRecords();}},5000);if(currentAdmin())refresh();
+// Shared club devices: polling keeps the token fresh, so sign out after 30 minutes without any interaction.
+const idleLimit=30*60*1000;let lastActivity=Date.now();
+for(const type of ['pointerdown','keydown','touchstart','wheel'])window.addEventListener(type,()=>{lastActivity=Date.now();},{passive:true});
+setInterval(async()=>{if(!currentAdmin()||mutating||Date.now()-lastActivity<idleLimit)return;lastActivity=Date.now();try{await logout();}catch{}signedOut();message('login-message','閒置超過 30 分鐘，已自動登出。',true);},30000);
 
 // Only a pending operation key is device-local; the authoritative count stays in the database.
 let openingDraft = 1;

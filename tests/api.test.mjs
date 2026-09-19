@@ -69,6 +69,7 @@ test('Valid Auth login without officer permission removes the newly obtained ses
  const c=await client(t);
  c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'outsider@example.test',password:'test-only-password'},result:{...authResult(),user:{email:'outsider@example.test'}}});
  c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'test-user-jwt',status:403,result:{message:'Officer permission required'}});
+ c.expect({path:'/auth/v1/logout',token:'test-user-jwt',status:204}); // the non-officer Auth session is revoked, not just forgotten
  await assert.rejects(c.api.login('outsider@example.test','test-only-password'),e=>e.status===403&&e.message==='此帳號不在幹部名單，請聯絡系統管理者。');
  assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.has('bike-admin-session'),false);
  await assert.rejects(c.api.api('/api/admin/settings',{total:2,contactUrl:''},true),e=>e.status===401);c.done();

@@ -37,7 +37,10 @@ export async function api(path, body, admin=false) {
 export async function login(username,password) {
   if(cloud) {const d=await request(`${cfg.supabaseUrl}/auth/v1/token?grant_type=password`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify({email:username,password})});remember({username:d.user.email,token:d.access_token,refreshToken:d.refresh_token,expires:Date.now()+d.expires_in*1000});}
   else remember(await api('/api/admin/login',{username,password}));
-  try { await api('/api/admin/records',undefined,true); } catch(e) {clearAdmin();if(e.status===403||e.status===401){const denied=new Error('此帳號不在幹部名單，請聯絡系統管理者。');denied.status=403;throw denied;}throw e;}
+  try { await api('/api/admin/records',undefined,true); } catch(e) {
+    // Not an officer: revoke the freshly issued Auth session instead of leaving a valid refresh token behind.
+    if(cloud&&session?.token){try{await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(session.token)});}catch{}}
+    clearAdmin();if(e.status===403||e.status===401){const denied=new Error('此帳號不在幹部名單，請聯絡系統管理者。');denied.status=403;throw denied;}throw e;}
 }
 export async function logout() {try { if(cloud)await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(await adminToken())});else await api('/api/admin/logout',{},true); } finally {clearAdmin();} }
 export function safeContact(url) { try {const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;} }

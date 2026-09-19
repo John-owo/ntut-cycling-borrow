@@ -2,6 +2,8 @@ name: Validate and publish GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,7 +21,7 @@ jobs:
       - run: npm test
   deploy:
     needs: validate
-    if: ${{ vars.SUPABASE_URL != '' && vars.SUPABASE_PUBLISHABLE_KEY != '' }}
+    if: ${{ github.event_name != 'pull_request' && vars.SUPABASE_URL != '' && vars.SUPABASE_PUBLISHABLE_KEY != '' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write

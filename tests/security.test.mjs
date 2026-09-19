@@ -38,7 +38,7 @@ test('Loopback server: Host allowlist blocks DNS rebinding, login has its own th
       assert.equal(response.headers['cross-origin-opener-policy'], 'same-origin'); assert.equal(response.headers['cross-origin-resource-policy'], 'same-origin');
       assert.match(response.headers['permissions-policy'], /camera=\(\)/); assert.equal(response.headers['cache-control'], 'no-store');
       const csp = response.headers['content-security-policy'];
-      assert.match(csp, /frame-ancestors 'none'/); assert.match(csp, /object-src 'none'/); assert.match(csp, /base-uri 'none'/); assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|connect-src[^;]* https:( |;)/);
+      assert.match(csp, /frame-ancestors 'none'/); assert.match(csp, /object-src 'none'/); assert.match(csp, /base-uri 'none'/); assert.match(csp, /require-trusted-types-for 'script'/); assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|connect-src[^;]* https:( |;)/);
     }
     // Login attempts are capped separately from the general API budget; the cap does not reveal whether the account exists.
     const login = body => raw(port, { path: '/api/admin/login', method: 'POST', body });
@@ -56,6 +56,15 @@ test('Loopback server: Host allowlist blocks DNS rebinding, login has its own th
     assert.equal(app.db.prepare('SELECT COUNT(*) n FROM sessions').get().n, 2);
     assert.equal((await raw(port, { path: '/api/admin/records?token=' + session.token })).status, 401); // query string is never an auth channel
     assert.equal((await raw(port, { path: '/api/admin/records', headers: { Authorization: `Bearer ${session.token}` } })).status, 200);
+    const admin = (path, body) => raw(port, { path, method: 'POST', body, headers: { Authorization: `Bearer ${session.token}` } });
+    // Contact link: HTTPS only and never with embedded credentials.
+    assert.equal((await admin('/api/admin/settings', { total: 3, contactUrl: 'https://officer:secret@example.org/' })).status, 400);
+    assert.equal((await admin('/api/admin/settings', { total: 3, contactUrl: 'https://example.org/contact' })).status, 200);
+    // Multibyte JSON split across TCP chunks must be decoded intact, not as replacement characters.
+    const name = '吳測試'.repeat(8); const payload = Buffer.from(JSON.stringify({ studentId: 'utf8-1', name, contactType: 'line', contact: 'test-only', token: 'c'.repeat(64) }));
+    const cut = payload.indexOf(Buffer.from('吳')) + 1;
+    const split = await new Promise((resolve, reject) => { const request = http.request({ host: '127.0.0.1', port, path: '/api/register', method: 'POST', agent: false, headers: { 'Content-Type': 'application/json' } }, response => { let data = ''; response.on('data', c => data += c); response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) })); }); request.on('error', reject); request.write(payload.subarray(0, cut)); setTimeout(() => request.end(payload.subarray(cut)), 30); });
+    assert.equal(split.status, 200); assert.equal(split.body.record.name, name);
     // Static allowlist: traversal-shaped paths and unknown files are 404, never read from disk.
     for (const path of ['/../package.json', '/%2e%2e/package.json', '/server/app.mjs', '/data/bikes.sqlite', '/.git/config']) assert.equal((await raw(port, { path })).status, 404, path);
   } finally { await app?.close(); rmSync(dir, { recursive: true, force: true }); }
@@ -75,7 +84,7 @@ test('Public bundle contains no secret credentials and keeps the CSP without inl
     if (file.endsWith('.js')) { assert.doesNotMatch(source, /\binnerHTML\b|\bouterHTML\b|insertAdjacentHTML|document\.write|\beval\(|new Function\(/, file); }
     if (file.endsWith('.html')) {
       const csp = source.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1]; assert.ok(csp, `${file} must declare a CSP`);
-      assert.match(csp, /script-src 'self'/); assert.match(csp, /object-src 'none'/); assert.match(csp, /base-uri 'none'/); assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/);
+      assert.match(csp, /script-src 'self'/); assert.match(csp, /object-src 'none'/); assert.match(csp, /base-uri 'none'/); assert.match(csp, /require-trusted-types-for 'script'/); assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/);
       assert.doesNotMatch(source, /<script(?![^>]*\bsrc=)[^>]*>[^<]/, `${file} must not use inline scripts`);
       assert.doesNotMatch(source, /\son[a-z]+="/i, `${file} must not use inline event handlers`);
       for (const anchor of source.match(/<a [^>]*target="_blank"[^>]*>/g) || []) assert.match(anchor, /rel="[^"]*noopener/, anchor);
@@ -83,6 +92,18 @@ test('Public bundle contains no secret credentials and keeps the CSP without inl
   }
   const config = readFileSync(new URL('config.js', publicDir), 'utf8');
   assert.match(config, /mode: "local"/); assert.match(config, /supabaseKey: ""/);
+  // Officer desk refuses to run framed (Pages cannot send frame-ancestors) and signs out idle sessions.
+  const admin = readFileSync(new URL('admin.js', publicDir), 'utf8');
+  assert.match(admin, /window\.self!==window\.top/); assert.match(admin, /idleLimit=30\*60\*1000/);
+});
+
+test('Deploy workflow tests pull requests but only publishes from pushes to main with least privilege', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /pull_request:\n\s+branches: \[main\]/);
+  assert.match(workflow, /if: \$\{\{ github\.event_name != 'pull_request' && vars\.SUPABASE_URL/);
+  assert.match(workflow, /^permissions:\n\s+contents: read/m);
+  assert.match(workflow, /npm audit --audit-level=high/);
+  for (const use of workflow.match(/uses: [^\n]+/g)) assert.match(use, /@[0-9a-f]{40}( #|$)/, use); // every action pinned to a commit SHA
 });
 
 test('i18n translate never resolves prototype properties for member-supplied text', async t => {
