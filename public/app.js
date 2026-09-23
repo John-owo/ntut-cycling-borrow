@@ -1,9 +1,9 @@
-import {confirmLocalized} from './i18n.js?v=terms0924';
+import {confirmLocalized} from './i18n.js?v=consent0924';
 import {api,safeContact,node,date} from './api.js';
 const $=id=>document.getElementById(id);
 let savedToken='',pendingToken='',summary=null,lastSuccess=0,busy=false,refreshing=false,lookupSequence=0;
 let registrationReady=false,termsRead=false;
-const terms=$('borrow-terms-text'),agree=$('terms-agree');
+const terms=$('borrow-terms-text'),agree=$('terms-agree'),registrationFields=$('registration-fields');
 function updateRegisterButton(){
   $('register-button').disabled=busy||!registrationReady||!summary||summary.total===null||Date.now()-lastSuccess>45000||!termsRead||!agree.checked;
 }
@@ -13,8 +13,13 @@ function updateTermsRead(){
   $('terms-progress').textContent='已閱讀至須知末尾，請勾選確認。';
   updateRegisterButton();
 }
+function updateRegistrationFields(){
+  registrationFields.hidden=!agree.checked;
+  registrationFields.disabled=!agree.checked;
+  updateRegisterButton();
+}
 terms.addEventListener('scroll',updateTermsRead);
-agree.addEventListener('change',updateRegisterButton);
+agree.addEventListener('change',updateRegistrationFields);
 requestAnimationFrame(updateTermsRead);
 try { savedToken=localStorage.getItem('bike-query-token')||'';pendingToken=localStorage.getItem('bike-pending-token')||''; }catch{}
 function save(key,value) {try{value?localStorage.setItem(key,value):localStorage.removeItem(key);}catch{}}
@@ -35,7 +40,7 @@ async function lookup(token,manual=false){const seq=++lookupSequence;try{const d
 async function refresh(){if(refreshing||busy)return;refreshing=true;try{if(savedToken&&!pendingToken){try{await lookup(savedToken);}catch{renderSummary(await api('/api/summary'));}}else renderSummary(await api('/api/summary'));}catch(e){stale(e.message);}finally{refreshing=false;}}
 $('refresh').addEventListener('click',refresh);
 $('register-form').addEventListener('submit',async e=>{e.preventDefault();if(busy)return;if(!termsRead||!agree.checked){message('register-message','請先讀完借車須知並勾選確認。',true);return;}updateRegisterButton();if($('register-button').disabled)return;lookupSequence++;busy=true;$('lookup-form').querySelector('button').disabled=true;$('forget').disabled=true;updateRegisterButton();const values=Object.fromEntries(new FormData(e.currentTarget));if(!pendingToken){pendingToken=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');save('bike-pending-token',pendingToken);}showCode(pendingToken);message('register-message','正在保存登記，請保留查詢碼…');
- try{const d=await api('/api/register',{...values,token:pendingToken});savedToken=pendingToken;save('bike-query-token',savedToken);pendingToken='';save('bike-pending-token','');$('lookup-token').value=savedToken;personal(d.record);renderSummary(d.summary);message('lookup-message','已取得最新狀態。');message('register-message','登記已保存。請保存查詢碼，再與幹部約時間。');$('register-form').reset();}
+ try{const d=await api('/api/register',{...values,token:pendingToken});savedToken=pendingToken;save('bike-query-token',savedToken);pendingToken='';save('bike-pending-token','');$('lookup-token').value=savedToken;personal(d.record);renderSummary(d.summary);message('lookup-message','已取得最新狀態。');message('register-message','登記已保存。請保存查詢碼，再與幹部約時間。');$('register-form').reset();updateRegistrationFields();}
  catch(err){message('register-message',err.message+' 若剛才送出後斷線，請先用上方查詢碼查詢，避免重複登記。',true);$('lookup-token').value=pendingToken;}
  finally{busy=false;$('lookup-form').querySelector('button').disabled=false;$('forget').disabled=false;updateRegisterButton();}});
 $('lookup-form').addEventListener('submit',async e=>{e.preventDefault();if(busy)return;const token=$('lookup-token').value.trim().toLowerCase();if(!/^[a-f0-9]{64}$/.test(token)){message('lookup-message','請貼上完整的 64 字元查詢碼。',true);return;}try{await lookup(token,true);}catch{}});

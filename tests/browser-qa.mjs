@@ -19,13 +19,14 @@ const base=`http://127.0.0.1:${app.server.address().port}`;
 const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL || 'msedge',headless:true});
 const page=await browser.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const results=[];
-async function readTerms(){await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();}
-async function register(id,name){await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=contact]').fill('synthetic-only');await readTerms();await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();}
+async function readTerms(){await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();assert.equal(await page.locator('#registration-fields').isVisible(),true);}
+async function register(id,name){await readTerms();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();assert.equal(await page.locator('#registration-fields').isVisible(),false);}
 async function layout(label,width){await page.setViewportSize({width,height:900});await page.screenshot({path:join(output,label+'.png'),fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),label+' horizontal overflow');results.push(label+' no horizontal overflow');}
 try{
  await page.goto(base);await page.locator('#total').filter({hasText:'6'}).waitFor();
  assert.equal(await page.locator('[name=contactType] option').evaluateAll(options=>options.map(option=>option.value).join(',')),'line,instagram');
  assert.equal(await page.locator('#terms-agree').isEnabled(),false);
+ assert.equal(await page.locator('#registration-fields').isVisible(),false);
  assert.equal(await page.locator('#register-button').isEnabled(),false);results.push('Contact options and borrowing-rules gate passed');
  assert.equal(await page.locator('#register-button').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(36, 60, 138)');results.push('Portal accent matches canonical brand #243C8A');
  await register('QA001','測試社員甲');

@@ -23,6 +23,8 @@ export const english = {
   "REGISTRATION / 借車登記": "REGISTRATION",
   "想借車，從這裡登記。": "Start your registration.",
   "只需留下以下資料。約好見面但還沒交車，仍會列在等候名單中。": "Leave the details below. You remain in the queue until a bike is handed over, even if a visit is arranged.",
+  "請先閱讀借車須知，同意後再填寫資料。約好見面但還沒交車，仍會列在等候名單中。": "Read and agree to the borrowing rules before entering your details. You remain in the queue until a bike is handed over, even if a visit is arranged.",
+  "登記資料": "Registration details",
   "學號": "Student ID",
   "姓名": "Name",
   "聯絡方式": "Contact method",
