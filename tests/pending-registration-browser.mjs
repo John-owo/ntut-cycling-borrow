@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {mkdtempSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {createApp} from '../server/app.mjs';
+const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const output=mkdtempSync(resolve('work/pending-registration-'));
+const app=createApp({dbPath:join(mkdtempSync(join(tmpdir(),'bike-pending-')),'test.sqlite'),publicDir:resolve('public')});
+app.db.prepare('UPDATE settings SET total=6 WHERE id=1').run();
+await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${app.server.address().port}`;
+const browser=await chromium.launch({channel:'msedge',headless:true}),page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const fill=async(id,name)=>{await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#register-button').click();};
+try{
+ await page.goto(base);await page.locator('#register-button:enabled').waitFor();await fill('PENDING001','舊登記');await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();
+ const old=await page.locator('#recovery-code').textContent();
+ await page.route('**/api/register',async route=>{await route.fetch();await route.abort('failed');});
+ await fill('PENDING002','待確認登記');await page.locator('#register-message.error').waitFor();
+ const pending=await page.locator('#recovery-code').textContent();assert.notEqual(pending,old);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('bike-pending-token')),pending);
+ await page.unrouteAll();await page.reload();await page.locator('#register-button:enabled').waitFor();
+ assert.equal(await page.locator('#lookup-token').inputValue(),pending);
+ assert.equal(await page.locator('#recovery').isVisible(),true);assert.equal(await page.locator('#recovery-code').textContent(),pending);
+ assert.match(await page.locator('#register-message').textContent(),/尚未確認/);
+ assert.equal(await page.locator('#personal-result').isVisible(),false);
+ await page.locator('#refresh').click();await page.waitForTimeout(100);assert.equal(await page.locator('#lookup-token').inputValue(),pending);
+ await page.locator('#lookup-form button').click();await page.locator('#personal-result').filter({hasText:'待確認登記'}).waitFor();
+ assert.equal(await page.evaluate(()=>localStorage.getItem('bike-pending-token')),null);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('bike-query-token')),pending);
+ await page.reload();await page.locator('#personal-result').filter({hasText:'待確認登記'}).waitFor();
+ assert.deepEqual(errors,[]);
+ writeFileSync(join(output,'results.json'),JSON.stringify({passed:true,mode:'real isolated SQLite and Edge',checks:['server commit with lost response retains pending token','reload prioritizes pending recovery over an older saved token','refresh cannot replace pending input','manual lookup resolves pending and survives reload'],errors},null,2));
+ console.log(output);
+}finally{await browser.close();app.server.closeAllConnections();await app.close();}
