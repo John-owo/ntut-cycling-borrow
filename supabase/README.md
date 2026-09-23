@@ -1,5 +1,9 @@
 # Supabase 後端
 
+## 借車目的（005）
+
+在 001–004 已套用的正式專案執行一次 `migrations/005_borrow_purpose.sql`，再發布含借車目的的新表單。新增的 `private.records.purpose` 只接受 `group_ride` 或 `personal_ride`；舊紀錄維持 `null`，不改寫現有資料。新表單呼叫六參數 `register(p_student_id,p_name,p_contact_type,p_contact,p_token,p_purpose)`；五參數版本保留供已開啟的舊頁面完成登記。查詢與幹部列表會回傳 `purpose`，既有幹部匯出自動包含此欄位。新的六參數登記只接受 LINE 或 Instagram。
+
 ## 濫用防護與幹部工具（003）
 
 依序套用 001、002 後執行 `migrations/003_abuse_controls.sql`。內容：
@@ -31,11 +35,11 @@ GitHub Pages 只提供前端；持久資料與權限由 Supabase 管理。請使
 3. 前端只設定 Project URL 與 anon/publishable key。service_role、資料庫密碼不得放在 GitHub、前端或瀏覽器。
 4. 管理員登入後，透過 `admin_settings` 設定實際總車數與 HTTPS 聯絡入口。初始總車數是 null，尚不能登記。
 
-RPC 名稱與參數：`summary()`、`register(p_student_id,p_name,p_contact_type,p_contact,p_token)`、`lookup(p_token)`、`admin_records()`、`admin_action(p_id,p_action,p_bike_note)`、`admin_settings(p_total,p_contact_url)`。回傳 JSON 與本機 API 相同；錯誤由 PostgREST 的 `message` 欄位轉成前端 error。管理登入/登出使用 Supabase Auth，登入結果由 adapter 轉成本機 token/username/expires 格式。私人表不在 API exposed schema，亦不向 anon/authenticated 開放表權限；RLS 全數啟用。
+RPC 名稱與參數：`summary()`、新版 `register(p_student_id,p_name,p_contact_type,p_contact,p_token,p_purpose)`、`lookup(p_token)`、`admin_records()`、`admin_action(p_id,p_action,p_bike_note)`、`admin_settings(p_total,p_contact_url)`。回傳 JSON 與本機 API 相同；錯誤由 PostgREST 的 `message` 欄位轉成前端 error。管理登入/登出使用 Supabase Auth，登入結果由 adapter 轉成本機 token/username/expires 格式。私人表不在 API exposed schema，亦不向 anon/authenticated 開放表權限；RLS 全數啟用。
 
 查詢碼由瀏覽器產生 32 bytes 隨機值，轉為 64 位 lowercase hex；DB 只保存 SHA-256。查詢必須持有完整查詢碼，不接受學號或流水號。所有異動鎖定同一 settings row，保證庫存、有效學號、順位一致；重送同查詢碼與相同資料回原紀錄，相同終態操作不重寫 audit。
 
-學號會去除頭尾空白並轉大寫，避免大小寫造成重複登記。聯絡方式固定接受 `phone`、`line`、`instagram`，聯絡內容維持自由填寫。
+學號會去除頭尾空白並轉大寫，避免大小寫造成重複登記。新版六參數登記只接受 `line`、`instagram`，借車目的只接受 `group_ride`、`personal_ride`；保留的舊版五參數登記仍接受 `phone`、`line`、`instagram`，供已開啟的舊頁面完成登記。聯絡內容維持自由填寫。
 
 ## 真 PostgreSQL 驗證方案
 

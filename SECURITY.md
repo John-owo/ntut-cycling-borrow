@@ -44,7 +44,7 @@
 ## 4. 目前的安全設定
 
 ### 輸入驗證與資料一致性
-- 學號 `^[a-zA-Z0-9-]{1,30}$` 去頭尾空白轉大寫；姓名≤80、聯絡≤200、備註／原因≤500，拒絕控制字元；`contactType` 白名單 `phone|line|instagram`；聯絡入口只接受 `https://`。
+- 學號 `^[a-zA-Z0-9-]{1,30}$` 去頭尾空白轉大寫；姓名≤80、聯絡≤200、備註／原因≤500，拒絕控制字元；新版六參數登記的 `contactType` 白名單為 `line|instagram`、`purpose` 為 `group_ride|personal_ride`。供已開啟舊頁面使用的五參數登記仍接受 `phone|line|instagram`；聯絡入口只接受 `https://`。
 - 本機 API 用 `exact()` 拒絕多餘欄位（防 mass assignment），JSON 本文上限 8 KB，`Content-Type` 必須是 `application/json`（415）。本文以 `Buffer.concat` 後一次解碼，跨 TCP 分段的中文字不會被寫成替代字元。
 - 聯絡入口在前端 `safeContact()` 與本機 `admin/settings` 都拒絕帶帳密（userinfo）的 URL；SQL 端只檢查 `https://` 前綴，前端顯示時仍會再過濾。
 - 所有異動先鎖定 `private.settings` 單列（`for update`）／SQLite `BEGIN IMMEDIATE`，庫存由紀錄計算，不維護可漂移的計數。

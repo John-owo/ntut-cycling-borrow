@@ -10,7 +10,7 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
  const dir=mkdtempSync(join(tmpdir(),'bike-backend-'));const dbPath=join(dir,'db.sqlite');let app;let base;let bearer;
  const start=async(extra={})=>{app=createApp({dbPath,...extra});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
  const call=async(path,body,admin=false)=>{const response=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${bearer}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,...await response.json()};};
- const registration=id=>({studentId:id.toUpperCase(),name:'Test member',contactType:'line',contact:'test-only',token:randomBytes(32).toString('hex')});
+ const registration=id=>({studentId:id.toUpperCase(),name:'Test member',contactType:'line',contact:'test-only',purpose:'group_ride',token:randomBytes(32).toString('hex')});
  try{
  await start();app.addAdmin('president','test-password-123');app.addAdmin('vice','test-password-456');
  assert.equal((await call('/api/summary')).total,null);
@@ -24,10 +24,13 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
  assert.equal((await call('/api/admin/settings',{total:1,contactUrl:''},true)).status,200);
  const a=registration('a'),b=registration('b');const ra=await call('/api/register',a),rb=await call('/api/register',b);
  assert.equal(ra.record.position,1);assert.equal(rb.record.standby,1);
+ assert.equal(ra.record.purpose,'group_ride');
  assert.equal((await call('/api/register',a)).record.id,ra.record.id);
+ assert.equal((await call('/api/register',{...a,purpose:'personal_ride'})).status,409);
  assert.equal((await call('/api/register',registration('a'))).status,409);
  assert.equal((await call('/api/register',{...registration('a'),studentId:' a '})).status,409);
  assert.equal((await call('/api/register',{...registration('z'),contactType:'email'})).status,400);
+ assert.equal((await call('/api/register',{...registration('z'),purpose:'other'})).status,400);
  assert.equal((await call('/api/me',{token:randomBytes(32).toString('hex')})).status,404);
  const results=await Promise.all([call('/api/admin/action',{id:rb.record.id,action:'lend'},true),call('/api/admin/action',{id:ra.record.id,action:'lend'},true)]);
  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
@@ -100,7 +103,7 @@ test('Borrowed adjustment: authenticated, bounded, stale-safe and permanent retr
  await start();app.addAdmin('officer','test-password-123');bearer=(await call('/api/admin/login',{username:'officer',password:'test-password-123'},false)).token;
  assert.equal((await call('/api/admin/borrowed',form(1))).status,409); // unset inventory
  await call('/api/admin/settings',{total:5,contactUrl:''});
- const member=await call('/api/register',{studentId:'REAL',name:'Member',contactType:'line',contact:'test',token:'a'.repeat(64)},false);
+ const member=await call('/api/register',{studentId:'REAL',name:'Member',contactType:'line',contact:'test',purpose:'personal_ride',token:'a'.repeat(64)},false);
  await call('/api/admin/action',{id:member.record.id,action:'lend',bikeNote:'original'});
  app.db.exec('UPDATE opening_loans SET outstanding=2 WHERE id=1');
  const original=app.db.prepare('SELECT * FROM records').all();
