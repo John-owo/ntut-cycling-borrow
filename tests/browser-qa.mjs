@@ -20,7 +20,7 @@ const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL || 'mse
 const page=await browser.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const results=[];
 async function readTerms(){await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();assert.equal(await page.locator('#registration-fields').isVisible(),true);}
-async function register(id,name){await readTerms();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();assert.equal(await page.locator('#registration-fields').isVisible(),false);}
+async function register(id,name,purpose='group_ride'){await readTerms();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=purpose]').selectOption(purpose);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();assert.equal(await page.locator('#registration-fields').isVisible(),false);}
 async function layout(label,width){await page.setViewportSize({width,height:900});await page.screenshot({path:join(output,label+'.png'),fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),label+' horizontal overflow');results.push(label+' no horizontal overflow');}
 try{
  await page.goto(base);await page.locator('#total').filter({hasText:'6'}).waitFor();
@@ -37,13 +37,14 @@ try{
  let release;let started;const gate=new Promise(r=>release=r),seen=new Promise(r=>started=r);
  await page.route('**/api/me',async route=>{const response=await route.fetch();started();await gate;await route.fulfill({response});});
  await page.locator('#refresh').click();await seen;
- await register('QA002','測試社員乙');release();await page.unrouteAll({behavior:'wait'});
+ await register('QA002','測試社員乙','personal_ride');release();await page.unrouteAll({behavior:'wait'});
  await page.waitForTimeout(150);assert.match(await page.locator('#personal-result').textContent(),/測試社員乙/);results.push('Delayed old lookup cannot replace new registration');
  await layout('member-zh-mobile',390);await layout('member-zh-desktop',1280);
  await page.locator('[data-language=en]').click();await layout('member-en-mobile',390);
  await layout('member-en-desktop',1280);
  await page.locator('[data-language=zh]').click();
  await page.goto(base+'/admin.html');await page.locator('[name=username]').fill('qa-admin');await page.locator('[name=password]').fill('qa-only-password-123');await page.locator('#login-form button').click();await page.locator('#workspace:not([hidden])').waitFor();
+ assert.match(await page.locator('#records').textContent(),/借車目的：自己私底下騎/);
  await page.locator('.record').first().getByRole('button',{name:'確認借出',exact:true}).click();await page.locator('#dialog-confirm').click();await page.locator('#action-dialog').waitFor({state:'hidden'});
  await page.locator('[data-filter=borrowed]').click();await page.locator('.record').getByRole('button',{name:'確認歸還',exact:true}).click();await page.locator('#dialog-confirm').click();await page.locator('#action-dialog').waitFor({state:'hidden'});
  await page.locator('[data-filter=history]').click();await page.locator('.record').filter({hasText:'已歸還'}).waitFor();results.push('Officer login, actual lend/return transitions, history passed in synthetic SQLite');

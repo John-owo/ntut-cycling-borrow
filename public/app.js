@@ -1,5 +1,5 @@
-import {confirmLocalized} from './i18n.js?v=consent0924';
-import {api,safeContact,node,date} from './api.js';
+import {confirmLocalized} from './i18n.js?v=purpose0924';
+import {api,safeContact,node,date} from './api.js?v=purpose0924';
 const $=id=>document.getElementById(id);
 let savedToken='',pendingToken='',summary=null,lastSuccess=0,busy=false,refreshing=false,lookupSequence=0;
 let registrationReady=false,termsRead=false;

@@ -76,8 +76,8 @@ test('Publishable anonymous requests use only apikey and preserve private lookup
  const c=await client(t);const token='a'.repeat(64);
  c.expect({path:'/rest/v1/rpc/summary',body:{},result:{total:2,waiting:0}});
  assert.deepEqual(await c.api.api('/api/summary'),{total:2,waiting:0});
- c.expect({path:'/rest/v1/rpc/register',body:{p_student_id:'S1',p_name:'Test member',p_contact_type:'line',p_contact:'test-only',p_token:token},result:{record:{status:'waiting',position:1}}});
- assert.equal((await c.api.api('/api/register',{studentId:'S1',name:'Test member',contactType:'line',contact:'test-only',token})).record.position,1);
+ c.expect({path:'/rest/v1/rpc/register',body:{p_student_id:'S1',p_name:'Test member',p_contact_type:'line',p_contact:'test-only',p_token:token,p_purpose:'group_ride'},result:{record:{status:'waiting',position:1,purpose:'group_ride'}}});
+ assert.equal((await c.api.api('/api/register',{studentId:'S1',name:'Test member',contactType:'line',contact:'test-only',purpose:'group_ride',token})).record.purpose,'group_ride');
  c.expect({path:'/rest/v1/rpc/lookup',body:{p_token:token},result:{record:{status:'waiting',position:2}}});
  assert.equal((await c.api.api('/api/me',{token})).record.position,2);
  assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.size,0);c.done();

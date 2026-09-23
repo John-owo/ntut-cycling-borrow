@@ -87,3 +87,7 @@ GitHub Pages： https://john-owo.github.io/ntut-cycling-borrow/ （部署與正�
 調整會永久保存操作識別碼、原因、經手人與前後數量。其他人已修改數量時會拒絕舊畫面覆寫，請重新載入後核對。連線中斷時用「重試確認數量」確認同一筆操作，不會重複套用。完整備份包含 `borrowedAdjustments`，復原時應一併保留。
 
 Supabase 須依序套用至 `supabase/migrations/004_borrowed_adjustment.sql`；此更新只新增功能與收據表，不修改現有借用數量。既有 001–003 不重跑。
+
+## 借車目的（005）
+
+正式站新增「參加社團團騎／自己私底下騎」必選欄位。發布新版前，先在同一 Supabase 專案執行一次 `supabase/migrations/005_borrow_purpose.sql`，確認六參數 `register` RPC 可用，再部署前端。舊紀錄的目的保留為空值，幹部頁顯示「未記錄」；不推測或補寫歷史用途。既有五參數登記 RPC 暫時保留給已開啟的舊版頁面。此欄位供幹部了解用途，不自動決定借車優先順位。
