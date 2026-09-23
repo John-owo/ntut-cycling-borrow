@@ -19,6 +19,7 @@ async function client(t,initial=null) {
   assert.equal(options.headers.apikey,key);
   assert.equal(options.headers.Authorization,expected.token?`Bearer ${expected.token}`:undefined);
   assert.deepEqual(options.body===undefined?undefined:JSON.parse(options.body),expected.body);
+  if(expected.wait) await expected.wait;
   return expected.status===204?new Response(null,{status:204}):Response.json(expected.result??{}, {status:expected.status??200});
  };
  t.after(()=>{for(const [k,descriptor]of Object.entries(previous)){if(descriptor)Object.defineProperty(globalThis,k,descriptor);else delete globalThis[k];}});
@@ -26,6 +27,50 @@ async function client(t,initial=null) {
  return {api,storage,expect:request=>queue.push(request),done:()=>assert.equal(queue.length,0,'All expected requests must run')};
 }
 const authResult=(token='test-user-jwt',refresh='test-refresh')=>({user:{email:'president@example.test'},access_token:token,refresh_token:refresh,expires_in:3600});
+const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+
+test('Concurrent officer requests share one rotating refresh token redemption',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'expired',refreshToken:'rotate-once',expires:0});
+ const gate=deferred();
+ c.expect({path:'/auth/v1/token?grant_type=refresh_token',body:{refresh_token:'rotate-once'},wait:gate.promise,result:authResult('rotated')});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'rotated',result:{records:[]}});
+ c.expect({path:'/rest/v1/rpc/admin_export',body:{},token:'rotated',result:{records:[]}});
+ const first=c.api.api('/api/admin/records',undefined,true),second=c.api.api('/api/admin/export',undefined,true);
+ gate.resolve();await Promise.all([first,second]);c.done();
+});
+
+test('Logout clears immediately and a delayed refresh cannot restore credentials or send an RPC',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'expired',refreshToken:'old',expires:0});
+ const refresh=deferred(),logout=deferred();
+ c.expect({path:'/auth/v1/token?grant_type=refresh_token',body:{refresh_token:'old'},wait:refresh.promise,result:authResult('late')});
+ const pending=assert.rejects(c.api.api('/api/admin/records',undefined,true),e=>e.status===401);
+ c.expect({path:'/auth/v1/logout',token:'expired',wait:logout.promise,status:204});
+ const signingOut=c.api.logout();assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.size,0);
+ refresh.resolve();await pending;assert.equal(c.api.currentAdmin(),null);assert.equal(c.storage.size,0);
+ logout.resolve();await signingOut;c.done();
+});
+
+test('An old rejected refresh cannot erase a newer officer login',async t=>{
+ const c=await client(t,{username:'old@example.test',token:'expired',refreshToken:'old',expires:0});const gate=deferred();
+ c.expect({path:'/auth/v1/token?grant_type=refresh_token',body:{refresh_token:'old'},wait:gate.promise,status:401});
+ const old=assert.rejects(c.api.api('/api/admin/records',undefined,true));
+ c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'president@example.test',password:'test-only-password'},result:authResult('new-login')});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'new-login'});
+ await c.api.login('president@example.test','test-only-password');gate.resolve();await old;
+ assert.equal(c.api.currentAdmin(),'president@example.test');assert.equal(JSON.parse(c.storage.get('bike-admin-session')).token,'new-login');c.done();
+});
+
+test('A stale failed officer check cannot revoke or clear a newer login',async t=>{
+ const c=await client(t),gate=deferred();
+ c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'president@example.test',password:'test-only-password'},result:authResult('old-login')});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'old-login',wait:gate.promise,status:403});
+ const old=assert.rejects(c.api.login('president@example.test','test-only-password'));
+ await new Promise(resolve=>setImmediate(resolve));
+ c.expect({path:'/auth/v1/token?grant_type=password',body:{email:'president@example.test',password:'test-only-password'},result:authResult('new-login')});
+ c.expect({path:'/rest/v1/rpc/admin_records',body:{},token:'new-login'});
+ await c.api.login('president@example.test','test-only-password');gate.resolve();await old;
+ assert.equal(JSON.parse(c.storage.get('bike-admin-session')).token,'new-login');c.done();
+});
 
 test('Publishable anonymous requests use only apikey and preserve private lookup/register RPC arguments',async t=>{
  const c=await client(t);const token='a'.repeat(64);

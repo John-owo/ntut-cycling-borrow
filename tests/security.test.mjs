@@ -16,6 +16,21 @@ const raw = (port, { path = '/api/summary', method = 'GET', headers = {}, body }
   request.on('error', reject); request.end(body ? JSON.stringify(body) : undefined);
 });
 
+test('Changing unknown API paths cannot bypass the address request budget',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'bike-path-budget-'));
+ const app=createApp({dbPath:join(dir,'db.sqlite'),rateLimit:3});
+ await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const port=app.server.address().port;
+ try{
+  assert.equal((await raw(port)).status,200);
+  assert.equal((await raw(port,{path:'/api/random-one'})).status,404);
+  assert.equal((await raw(port,{path:'/api/random-two'})).status,404);
+  const denied=await raw(port,{path:'/api/random-three'});
+  assert.equal(denied.status,429);assert.match(denied.headers['retry-after'],/^\d+$/);
+  assert.equal((await raw(port)).status,429);
+  assert.equal((await raw(port,{path:'/'})).status,200); // static recovery page remains available
+ }finally{await app.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test('Loopback server: Host allowlist blocks DNS rebinding, login has its own throttle, headers and session hygiene', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'bike-security-')); let app;
   const start = async extra => { app = createApp({ dbPath: join(dir, 'db.sqlite'), ...extra }); await new Promise(r => app.server.listen(0, '127.0.0.1', r)); return app.server.address().port; };
@@ -98,7 +113,7 @@ test('Public bundle contains no secret credentials and keeps the CSP without inl
 });
 
 test('Deploy workflow tests pull requests but only publishes from pushes to main with least privilege', () => {
-  const workflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
+  const workflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8').replace(/\r\n/g,'\n');
   assert.match(workflow, /pull_request:\n\s+branches: \[main\]/);
   assert.match(workflow, /if: \$\{\{ github\.event_name != 'pull_request' && vars\.SUPABASE_URL/);
   assert.match(workflow, /^permissions:\n\s+contents: read/m);

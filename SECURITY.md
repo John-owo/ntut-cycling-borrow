@@ -78,6 +78,12 @@
 - Actions 全部釘 SHA；`permissions: contents: read`，deploy job 才有 `pages: write`／`id-token: write`。Dependabot 監看 npm 與 github-actions。
 - GitHub 倉庫：main ruleset 禁止刪除與 force push，secret scanning + push protection 啟用，Actions 限 GitHub 官方與 verified creators。
 
+### 2026-09-22 本機修補（尚未部署）
+
+- Auth 更新改為同一時間共用一個請求，並檢查登入世代。舊 refresh 回應不能復活已登出 session，也不能清掉新的登入；登出立即清除本機憑證及畫面個資，匯出回應若晚於登出就不再下載。
+- 本機 API 限流改為同來源共用預算。舊版將任意 path 納入 key，可用持續變換未知路徑繞過限流並增加記憶體用量。此修補只適用 Node 本機服務，不能當成 Supabase 的限流證據。
+- 三項 Auth 競態測試對 `b9ba45c` 都失敗、修補後通過；未知路徑的 HTTP 節流回歸通過。細節見 `docs/LOCAL-DELIVERY-20260922.md`。
+
 ## 5. 驗證方式
 
 ```powershell
@@ -100,7 +106,7 @@ npm.cmd test
 | 正式站無法設定回應標頭 | GitHub Pages 不支援 `frame-ancestors`、`Permissions-Policy`、COOP。點擊劫持目前靠 `admin.js` 的 JS 防嵌入與二次確認對話框緩解，JS 防護在 `sandbox` iframe 中仍可隱藏頁面，但不等於標頭。 | 若日後改用可設標頭的託管（Cloudflare Pages／自有網域），把第 4 節本機標頭搬過去。 |
 | 幹部頁 localStorage 鍵名含幹部 email | 已借出數量調整的待重試操作以 `bike-borrowed-adjustment:<路徑>:<email>` 為鍵，登出後鍵名仍可能留在共用裝置。只揭露曾使用的幹部信箱，不含憑證。 | Informational；若要消除可改為雜湊鍵名。 |
 | 使用者文字未過濾 Unicode 方向控制字元 | 姓名／備註可含 U+202E 等雙向覆寫字元，只影響幹部頁顯示順序，不能執行程式。SQL 與本機都已拒絕 ASCII 控制字元。 | Low；需要時在 `register()` 與本機 `text()` 同步加入 `\p{Cf}` 拒絕（需 migration）。 |
-| 學號存在性可被探測 | `register()` 對已有效登記的學號回明確訊息，是社員自助的必要功能。 | 受註冊節流限制（每來源 10 次／10 分、全站 300／日）；接受為 Informational。 |
+| 學號存在性可被探測 | `register()` 對已有效登記的學號回明確訊息，是既有社員自助行為。SQL 發生例外時，同交易的 throttle insert 也會 rollback，因此目前不能宣稱失敗探測受每來源／全站登記上限完整保護。 | 保留為未解風險；需要 API 邊界限流或另行設計不洩露存在性的登記回應。成功登記上限仍有效。本機 Node limiter 不代表正式 Supabase 已套用保護。 |
 | 節流來源 IP 依賴代理標頭 | `private.client_hash()` 依序信任 `cf-connecting-ip`、`x-real-ip`、`x-forwarded-for` 最後一段。Supabase 位於 Cloudflare 後方時第一項可信；若供應商架構改變，per-client 節流可被偽造，全站上限仍有效。 | 觀察 Supabase 架構變動；必要時另開 migration 調整順序。 |
 | 匿名 `summary()`／`lookup()` 無限流 | 每次呼叫成本低，但免費方案有配額；大量呼叫屬資源耗盡而非資料外洩。 | 依實際流量在 Supabase 設定 API rate limit／CAPTCHA；不在本專案內宣稱已解決。 |
 | 幹部帳號無 MFA、密碼強度未強制 | Supabase Auth 預設無 MFA；本專案 UI 不支援 TOTP。 | 幹部使用密碼管理器與長密碼；社團可在 Dashboard 啟用 MFA 後再擴充 UI。 |

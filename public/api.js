@@ -1,10 +1,11 @@
 const cfg = window.BIKE_CONFIG || {};
 export const cloud = cfg.mode === 'supabase';
-let session;
+let session, refreshTask = null, authGeneration = 0;
 try { session = JSON.parse(sessionStorage.getItem('bike-admin-session') || 'null'); } catch {}
 const remember = value => { session = value; try { value ? sessionStorage.setItem('bike-admin-session',JSON.stringify(value)) : sessionStorage.removeItem('bike-admin-session'); } catch {} };
 export const currentAdmin = () => session?.username || null;
-export const clearAdmin = () => remember(null);
+export const clearAdmin = () => { authGeneration++; refreshTask = null; remember(null); };
+const signedOutError = () => Object.assign(new Error('請先登入。'), {status:401});
 async function request(url, options = {}) {
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000);
   try {
@@ -18,11 +19,25 @@ async function request(url, options = {}) {
 }
 function cloudHeaders(token) { if(!cfg.supabaseUrl || !cfg.supabaseKey) throw new Error('資料服務尚未設定，請聯絡幹部。'); return {'Content-Type':'application/json',apikey:cfg.supabaseKey,...(token?{Authorization:`Bearer ${token}`}:{})}; }
 async function adminToken() {
-  if(!session) {const e = new Error('請先登入。');e.status=401;throw e;}
+  if(!session) throw signedOutError();
+  const generation = authGeneration;
   if(cloud && session.expires < Date.now()+30000) {
-    try { const data=await request(`${cfg.supabaseUrl}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify({refresh_token:session.refreshToken})}); remember({username:data.user.email,token:data.access_token,refreshToken:data.refresh_token,expires:Date.now()+data.expires_in*1000}); }
-    catch(e){clearAdmin();throw e;}
+    // A rotating refresh token must be redeemed once even when polling and an action overlap.
+    if(!refreshTask) {
+      const refreshToken = session.refreshToken;
+      const task = (async()=>{
+        try {
+          const data=await request(`${cfg.supabaseUrl}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify({refresh_token:refreshToken})});
+          if(generation!==authGeneration) throw signedOutError();
+          remember({username:data.user.email,token:data.access_token,refreshToken:data.refresh_token,expires:Date.now()+data.expires_in*1000});
+        } catch(e) { if(generation===authGeneration) clearAdmin(); throw e; }
+      })();
+      refreshTask=task;
+      task.finally(()=>{if(refreshTask===task)refreshTask=null;}).catch(()=>{});
+    }
+    await refreshTask;
   }
+  if(generation!==authGeneration||!session) throw signedOutError();
   return session.token;
 }
 export async function api(path, body, admin=false) {
@@ -35,14 +50,25 @@ export async function api(path, body, admin=false) {
   return request((cfg.apiBase||'')+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${await adminToken()}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 }
 export async function login(username,password) {
-  if(cloud) {const d=await request(`${cfg.supabaseUrl}/auth/v1/token?grant_type=password`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify({email:username,password})});remember({username:d.user.email,token:d.access_token,refreshToken:d.refresh_token,expires:Date.now()+d.expires_in*1000});}
-  else remember(await api('/api/admin/login',{username,password}));
-  try { await api('/api/admin/records',undefined,true); } catch(e) {
-    // Not an officer: revoke the freshly issued Auth session instead of leaving a valid refresh token behind.
-    if(cloud&&session?.token){try{await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(session.token)});}catch{}}
-    clearAdmin();if(e.status===403||e.status===401){const denied=new Error('此帳號不在幹部名單，請聯絡系統管理者。');denied.status=403;throw denied;}throw e;}
+  clearAdmin(); const generation=authGeneration;
+  const d=cloud ? await request(`${cfg.supabaseUrl}/auth/v1/token?grant_type=password`,{method:'POST',headers:cloudHeaders(),body:JSON.stringify({email:username,password})}) : await api('/api/admin/login',{username,password});
+  if(generation!==authGeneration) throw signedOutError();
+  remember(cloud?{username:d.user.email,token:d.access_token,refreshToken:d.refresh_token,expires:Date.now()+d.expires_in*1000}:d);
+  try { await api('/api/admin/records',undefined,true); if(generation!==authGeneration)throw signedOutError(); } catch(e) {
+    const ownsSession=generation===authGeneration;
+    if(ownsSession)clearAdmin();
+    // Supabase logout may revoke other sessions: never run it for a stale login.
+    if(ownsSession&&cloud&&d.access_token){try{await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(d.access_token)});}catch{}}
+    if(e.status===403||e.status===401){const denied=new Error('此帳號不在幹部名單，請聯絡系統管理者。');denied.status=403;throw denied;}throw e;}
 }
-export async function logout() {try { if(cloud)await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(await adminToken())});else await api('/api/admin/logout',{},true); } finally {clearAdmin();} }
+export async function logout() {
+  const token=session?.token;
+  // Remove local authority immediately; delayed Auth responses cannot resurrect it.
+  clearAdmin();
+  if(!token)return;
+  if(cloud)await request(`${cfg.supabaseUrl}/auth/v1/logout`,{method:'POST',headers:cloudHeaders(token)});
+  else await request((cfg.apiBase||'')+'/api/admin/logout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:'{}'});
+}
 export function safeContact(url) { try {const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;} }
 export function node(tag,text,cls) { const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el; }
 export function date(value) { return value ? new Date(value).toLocaleString('zh-TW',{hour12:false}) : '—'; }
