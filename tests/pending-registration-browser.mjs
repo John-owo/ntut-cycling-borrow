@@ -10,7 +10,7 @@ const app=createApp({dbPath:join(mkdtempSync(join(tmpdir(),'bike-pending-')),'te
 app.db.prepare('UPDATE settings SET total=6 WHERE id=1').run();
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${app.server.address().port}`;
 const browser=await chromium.launch({channel:'msedge',headless:true}),page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
-const fill=async(id,name)=>{await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();await page.locator('#register-button').click();};
+const fill=async(id,name)=>{await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#register-button').click();};
 try{
  await page.goto(base);await page.locator('#total').filter({hasText:'6'}).waitFor();await fill('PENDING001','舊登記');await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();
  const old=await page.locator('#recovery-code').textContent();
