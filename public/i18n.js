@@ -1,4 +1,4 @@
-import {english} from './translations.js?v=purpose0924';
+import {english} from './translations.js?v=security0924';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const patterns=[

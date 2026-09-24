@@ -1,5 +1,19 @@
 # Supabase 後端
 
+## 公開 API 與幹部登入補強（006、007）
+
+先確認 001–005 已套用；只執行一次 `006_public_rpc_security.sql` 和 `007_officer_session_security.sql`，再發布新版前端。不要重跑已套用的 migration。既有資料、查詢碼與幹部名單不變，不新增或刪除社員資料。
+
+- 006：摘要與查詢共用每來源 1200 次／分鐘；兩版登記共用每來源 30 次／10 分鐘，包含失敗與重試。另保留成功新增 15／分鐘、90／小時、300／日的全站上限。社員回傳限於姓名、學號、狀態、時間、順位、目的、識別碼；聯絡方式與內部備註只在幹部 API 回傳。
+- 所有公開 RPC 使用 POST，GET／HEAD 不回資料。失敗以 `response.status` 設定 HTTP 狀態並正常回傳 JSON，讓已記錄的請求計數提交；不能改回 `raise exception` 導致整筆交易回滾。PostgREST 必須採用提交交易的設定。
+- 來源雜湊沿用既有代理標頭判讀；共用校園 NAT 仍共用額度，IP 判讀依賴 Supabase 代理正確覆寫標頭。這不是邊緣網路限流，也不涵蓋尚未進入 RPC 的 HTTP 錯誤或抵擋分散式攻擊。需觀察真實使用量再調整。
+- 007：每個幹部 RPC 核對 `auth.sessions` 與 `private.admins`。已設定 MFA 者要求 `aal2`；未設定者可登入後自行設定 TOTP 驗證器。`admin_session_status()` 只回傳目前登入者的驗證狀態，不回社員資料。
+- 新版前端憑證只存在記憶體，重新整理需重登。幹部本人設定並確認驗證碼；不要把密碼、驗證器金鑰或即時驗證碼交給開發工具。
+
+部署驗證：匿名 summary 成功；無效 lookup/register 回 400 且計數增加；GET 拒絕；匿名 admin_session_status 拒絕；確認所有 private core 函式無 anon/authenticated execute。正式站不得灌單或用真實社員資料做破壞測試。完整登入、MFA enrollment/challenge、登出後 JWT 拒絕需幹部本人驗證，不能以 PGlite 或模擬 Auth 測試替代。
+
+若需回復前端可部署前一版；006 不改成功回傳中的原有必要欄位。007 啟用後，已設定 MFA 的帳號需使用支援 MFA 的新版前端。不要回復成允許已撤銷 session 或略過 MFA 的資料庫權限。
+
 ## 借車目的（005）
 
 在 001–004 已套用的正式專案執行一次 `migrations/005_borrow_purpose.sql`，再發布含借車目的的新表單。新增的 `private.records.purpose` 只接受 `group_ride` 或 `personal_ride`；舊紀錄維持 `null`，不改寫現有資料。新表單呼叫六參數 `register(p_student_id,p_name,p_contact_type,p_contact,p_token,p_purpose)`；五參數版本保留供已開啟的舊頁面完成登記。查詢與幹部列表會回傳 `purpose`，既有幹部匯出自動包含此欄位。新的六參數登記只接受 LINE 或 Instagram。
