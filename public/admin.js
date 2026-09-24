@@ -1,5 +1,5 @@
-import {confirmLocalized} from './i18n.js?v=purpose0924';
-import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date} from './api.js?v=purpose0924';
+import {confirmLocalized} from './i18n.js?v=security0924';
+import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date,adminMfaState,loadMfaState,enrollMfa,verifyMfa} from './api.js?v=security0924';
 // GitHub Pages cannot send frame-ancestors, so the officer desk refuses to run inside another site's frame (clickjacking defense in depth).
 if(window.self!==window.top){document.documentElement.hidden=true;try{window.top.location.replace(location.href);}catch{}throw new Error('Officer desk must not be framed');}
 const $=id=>document.getElementById(id);let data=null,filter='waiting',refreshing=false,lastSuccess=0,pending=null,mutating=false,settingsDirty=false,authGeneration=0;
@@ -7,7 +7,7 @@ let borrowedDirty=false,borrowedSnapshot=null,refreshTask=null;
 const names={waiting:'等候中',borrowed:'借用中',returned:'已歸還',cancelled:'已取消'};const actions={lend:'確認借出',return:'確認歸還',cancel:'取消登記'};const contactNames={phone:'手機',line:'LINE',instagram:'Instagram'};const purposeNames={group_ride:'參加社團團騎',personal_ride:'自己私底下騎'};const selected=new Set();let waitingCount=0;
 function message(id,text,error=false){$(id).textContent=text;$(id).classList.toggle('error',error);}
 function locked(){return !lastSuccess||Date.now()-lastSuccess>45000;}
-function signedOut(){authGeneration++;selected.clear();pending=null;data=null;lastSuccess=0;$('workspace').hidden=true;$('login-panel').hidden=false;$('records').replaceChildren();$('identity').textContent='';$('action-dialog').close();$('action-form').reset();$('settings-form').reset();settingsDirty=false;borrowedDirty=false;borrowedSnapshot=null;$('borrowed-form').reset();message('borrowed-message','');$('borrowed-history').replaceChildren();}
+function signedOut(){authGeneration++;resetMfa();selected.clear();pending=null;data=null;lastSuccess=0;$('workspace').hidden=true;$('login-panel').hidden=false;$('records').replaceChildren();$('identity').textContent='';$('action-dialog').close();$('action-form').reset();$('settings-form').reset();settingsDirty=false;borrowedDirty=false;borrowedSnapshot=null;$('borrowed-form').reset();message('borrowed-message','');$('borrowed-history').replaceChildren();}
 function showRecords(){renderBorrowed();const root=$('records');root.replaceChildren();showOpening(root);const rows=(data?.records||[]).filter(r=>filter==='history'?['returned','cancelled'].includes(r.status):r.status===filter);
  if(filter==='waiting'){const ids=new Set(rows.map(r=>r.id));for(const id of selected)if(!ids.has(id))selected.delete(id);waitingCount=rows.length;if(rows.length>1)root.append(bulkBar(rows));}else selected.clear();
  if(!rows.length){root.append(node('p',filter==='waiting'?'目前沒有等候登記。':filter==='borrowed'?(data?.opening?.outstanding>0?'目前沒有線上登記的借用紀錄；既有借出請見上方。':'目前沒有借用中的車輛。'):'目前沒有已歸還或取消的紀錄。','empty'));return;}
@@ -23,14 +23,14 @@ async function bulkCancel(){if(mutating||!selected.size)return;const ids=[...sel
  try{const result=await api('/api/admin/cancel-many',{ids},true);selected.clear();message('action-message',`已取消 ${result.cancelled.length} 筆登記${result.skipped.length?`，${result.skipped.length} 筆已不在等候中`:''}。`);}
  catch(err){message('action-message',`${err.message} 請更新清單確認狀態後再操作。`,true);}
  finally{mutating=false;await refresh();showRecords();}}
-function render(next){data=next;lastSuccess=Date.now();$('workspace').hidden=false;$('login-panel').hidden=true;$('identity').textContent=`目前登入：${currentAdmin()}`;for(const key of ['total','borrowed','available','waiting'])$(key).textContent=next.summary[key]??'待設定';message('sync-status',`更新於 ${new Date().toLocaleTimeString('zh-TW',{hour12:false})}`);if(!settingsDirty){$('settings-form').elements.total.value=next.summary.total??'';$('settings-form').elements.contactUrl.value=next.summary.contactUrl||'';}showRecords();}
+function render(next){renderMfaSecurity();data=next;lastSuccess=Date.now();$('workspace').hidden=false;$('login-panel').hidden=true;$('identity').textContent=`目前登入：${currentAdmin()}`;for(const key of ['total','borrowed','available','waiting'])$(key).textContent=next.summary[key]??'待設定';message('sync-status',`更新於 ${new Date().toLocaleTimeString('zh-TW',{hour12:false})}`);if(!settingsDirty){$('settings-form').elements.total.value=next.summary.total??'';$('settings-form').elements.contactUrl.value=next.summary.contactUrl||'';}showRecords();}
 function refresh(){
- if(refreshing||!currentAdmin())return refreshTask;
+ if(refreshing||!currentAdmin()||!$('mfa-panel').hidden)return refreshTask;
  refreshing=true;const generation=authGeneration;
- refreshTask=(async()=>{try{const result=await api('/api/admin/records',undefined,true);if(generation!==authGeneration||!currentAdmin())return;render(result);}catch(e){if(generation!==authGeneration)return;message('sync-status',`更新失敗：${e.message}，資料可能已過期。`,true);lastSuccess=0;showRecords();if(e.status===401||e.status===403){clearAdmin();signedOut();message('login-message','登入失效或沒有幹部權限，請重新登入。',true);}}finally{refreshing=false;}})();
+ refreshTask=(async()=>{try{const result=await api('/api/admin/records',undefined,true);if(generation!==authGeneration||!currentAdmin()||!$('mfa-panel').hidden)return;render(result);}catch(e){if(generation!==authGeneration)return;message('sync-status',`更新失敗：${e.message}，資料可能已過期。`,true);lastSuccess=0;showRecords();if(e.message==='MFA_REQUIRED'){try{await loadMfaState();if(generation===authGeneration)showMfa();}catch{if(generation===authGeneration){clearAdmin();signedOut();message('login-message','登入失效或沒有幹部權限，請重新登入。',true);}}return;}if(e.status===401||e.status===403){clearAdmin();signedOut();message('login-message','登入失效或沒有幹部權限，請重新登入。',true);}}finally{refreshing=false;}})();
  return refreshTask;
 }
-$('login-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.currentTarget.querySelector('button');button.disabled=true;const f=new FormData(e.currentTarget);try{await login(f.get('username'),f.get('password'));$('login-form').reset();message('login-message','');await refresh();}catch(err){message('login-message',err.message,true);}finally{button.disabled=false;}});
+$('login-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.currentTarget.querySelector('button');button.disabled=true;const f=new FormData(e.currentTarget);try{await login(f.get('username'),f.get('password'));$('login-form').reset();message('login-message','');if(adminMfaState()?.required)showMfa();else await refresh();}catch(err){message('login-message',err.message,true);}finally{button.disabled=false;}});
 $('export').addEventListener('click',async()=>{const button=$('export'),generation=authGeneration;button.disabled=true;try{const dump=await api('/api/admin/export',undefined,true);if(generation!==authGeneration)return;const blob=new Blob([JSON.stringify(dump,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ntut-cycling-borrow-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);message('action-message','備份已下載，檔案內含個資，請妥善保存。');await refresh();}catch(err){message('action-message',err.message,true);}finally{button.disabled=false;}});
 $('logout').addEventListener('click',async()=>{const task=logout();signedOut();try{await task;}catch{message('login-message','此裝置已登出；遠端登出未確認，請勿在共用裝置保留登入。',true);}});
 $('refresh').addEventListener('click',refresh);document.querySelectorAll('[data-filter]').forEach(button=>button.addEventListener('click',()=>{filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));showRecords();}));
@@ -114,3 +114,35 @@ $('borrowed-form').addEventListener('submit',async e=>{
   if(generation===authGeneration)message('borrowed-message',`${err.message} 請更新清單確認狀態後再操作。`,true);
  }finally{await refreshTask;mutating=false;if(generation===authGeneration){await refresh();showRecords();}}
 });
+
+function resetMfa(){ $('mfa-panel').hidden=true;$('mfa-enrollment').hidden=true;$('mfa-secret').textContent='';$('mfa-factor').replaceChildren();$('mfa-form').reset();message('mfa-message',''); }
+function renderMfaSecurity(){
+ $('mfa-security').hidden=!cloud;
+ if(!cloud)return;
+ const enrolled=adminMfaState()?.enrolled;
+ $('mfa-security-message').textContent=enrolled?'雙重驗證已啟用。':'此帳號尚未啟用雙重驗證，仍只有密碼保護。請設定驗證器。';
+ $('mfa-setup').hidden=!!enrolled;
+}
+function showMfa(enrollment){
+ resetMfa();$('workspace').hidden=true;$('login-panel').hidden=true;$('mfa-panel').hidden=false;
+ const factors=enrollment?[{id:enrollment.id,name:'NTUT Cycling'}]:adminMfaState()?.factors||[];
+ for(const factor of factors){const option=node('option',factor.name);option.value=factor.id;$('mfa-factor').append(option);}
+ if(enrollment){$('mfa-enrollment').hidden=false;$('mfa-secret').textContent=enrollment.totp.secret;}
+ if(!factors.length)message('mfa-message','找不到可用的驗證器，請聯絡系統管理者。',true);
+ $('mfa-form').elements.code.focus();
+}
+$('mfa-setup').addEventListener('click',async()=>{
+ const button=$('mfa-setup'),generation=authGeneration;button.disabled=true;
+ // Stop polling while enrollment/verification rotates credentials.
+ $('mfa-panel').hidden=false;$('workspace').hidden=true;
+ try{await refreshTask;if(generation!==authGeneration)return;const enrollment=await enrollMfa();if(generation===authGeneration)showMfa(enrollment);}
+ catch(error){if(generation===authGeneration){resetMfa();await refresh();message('action-message',error.message,true);}}
+ finally{button.disabled=false;}
+});
+$('mfa-form').addEventListener('submit',async event=>{
+ event.preventDefault();const generation=authGeneration,button=event.currentTarget.querySelector('button[type="submit"]');button.disabled=true;
+ try{const state=await verifyMfa($('mfa-factor').value,event.currentTarget.elements.code.value);if(generation!==authGeneration)return;if(state.required)throw new Error('請重新完成雙重驗證。');resetMfa();await refresh();}
+ catch(error){if(generation===authGeneration)message('mfa-message',error.message,true);}
+ finally{button.disabled=false;}
+});
+$('mfa-cancel').addEventListener('click',async()=>{const task=logout();signedOut();try{await task;}catch{message('login-message','此裝置已登出；遠端登出未確認，請勿在共用裝置保留登入。',true);}});

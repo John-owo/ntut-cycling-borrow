@@ -46,7 +46,7 @@ node server/start.mjs
 - 瀏覽器只保存查詢碼或本次管理登入憑證；業務資料在伺服器。本機與雲端資料庫不自動互相搬移。
 - 每 15 秒更新、切回頁面更新；失敗清楚標示舊資料，超過 45 秒標示過期。後端仍再次檢查狀態與庫存。
 - 無線上選車、完整會員、付款、電子簽名、預約時段或自動通知。
-- 匿名登記有節流（全站每分鐘 15／每小時 90／每日 300 次，同一來源網路每 10 分鐘 10 次），超限回 429 並提示稍後再試；幹部可批次取消垃圾登記。詳見 `supabase/README.md`。
+- 套用 006 後，匿名登記每來源 30 次／10 分鐘（包含失敗與重試），全站成功新增另限 15／分鐘、90／小時、300／日；公開摘要與查詢共用每來源 1200 次／分鐘。超限回 429；幹部可批次取消垃圾登記。這是資料庫 RPC 限流，不等於網路層防 DDoS，詳見 `supabase/README.md`。
 - 備份：幹部以 `node scripts/export-backup.mjs` 匯出完整 JSON 到 `backups/`；Supabase Auth 公開註冊已關閉，新增幹部需在 Dashboard 建帳號再加入 `private.admins`。
 
 ## 驗證與限制
@@ -68,10 +68,12 @@ SQLite 測試使用真 HTTP 與磁碟資料庫，包含並行最後一台、冪�
 
 完整的資安假設、驗證模型、設定與剩餘風險以 `SECURITY.md` 為準；本節為摘要。
 
-- 幹部登入後，Supabase 的 access token 與 refresh token 以 `sessionStorage` 保存在瀏覽器；關閉分頁即清除，重新整理不需重登。社員的私人查詢碼保存在 `localStorage`，由本人按「清除此裝置的查詢碼」移除。
-- 兩者的 origin 都是 `https://john-owo.github.io`，與同帳號之後任何其他 GitHub Pages 專案共用。因此本帳號不應再發佈其他 Pages 專案；若日後需要，應改為只在記憶體保存 refresh token（重新整理需重登）或改用獨立網域。
+- 幹部的 access token 與 refresh token 只保存在頁面記憶體，重新整理需重登；新版啟動時移除舊的 `sessionStorage` 登入資料。社員的私人查詢碼仍保存在 `localStorage`，由本人按「清除此裝置的查詢碼」移除。
+- origin 仍是 `https://john-owo.github.io`，不同路徑不隔離同來源網站。記憶體保存降低儲存憑證風險，但不代表可抵擋同來源惡意程式；社員查詢碼仍有共用裝置與同來源風險。獨立網域仍是後續隔離方案。
+- 套用 007 後，幹部操作每次檢查 Auth session 是否仍存在；已設定雙重驗證的幹部必須完成驗證碼登入。未設定者可先登入並由本人設定驗證器，避免在尚未完成設定前被鎖住。這不等於全體幹部已完成 MFA。
 - 頁面已加入 `<meta http-equiv="Content-Security-Policy">`：只允許同來源腳本與樣式、Supabase 連線，禁止外掛物件與 base 標籤。GitHub Pages 無法自訂回應標頭，因此 `frame-ancestors` 無法設定；幹部頁另加 `noindex`。
 - 沒有任何私密金鑰在前端：`config.js` 只含 publishable key，由 Actions 依變數生成並經 `scripts/pages-config.mjs` 驗證不是 secret key。
+- 正式部署的 CSP 只允許目前 Supabase 專案的連線位址，不再允許其他 Supabase 專案或 localhost；本機模式維持開發用設定。
 - 個資保留期限與刪除策略尚未實作，由社團決定後再另開 migration；系統不自動刪除任何真實資料。
 
 ## 既有借用

@@ -56,3 +56,4 @@ input,select,textarea,button,.button{font-family:inherit}.intro{line-height:1.85
 .terms-confirm input{width:18px;min-width:18px;min-height:18px;height:18px;margin:2px 0 0;accent-color:var(--navy)}
 #registration-fields{border:0;padding:0;margin:20px 0 0;min-width:0;width:100%}
 #registration-fields legend{margin-bottom:14px;padding:0;color:var(--navy);font-size:16px;font-weight:700}
+#mfa-secret{display:block;overflow-wrap:anywhere;user-select:all;padding:12px;background:var(--paper);line-height:1.6}

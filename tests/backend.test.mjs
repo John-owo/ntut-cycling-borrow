@@ -25,6 +25,7 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
  const a=registration('a'),b=registration('b');const ra=await call('/api/register',a),rb=await call('/api/register',b);
  assert.equal(ra.record.position,1);assert.equal(rb.record.standby,1);
  assert.equal(ra.record.purpose,'group_ride');
+ assert.deepEqual(Object.keys(ra.record).sort(),['id','studentId','name','purpose','status','createdAt','updatedAt','position','standby'].sort());
  assert.equal((await call('/api/register',a)).record.id,ra.record.id);
  assert.equal((await call('/api/register',{...a,purpose:'personal_ride'})).status,409);
  assert.equal((await call('/api/register',registration('a'))).status,409);
@@ -53,6 +54,13 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
  assert.equal((await call('/api/summary')).waiting,0);
  const summary=await call('/api/summary');assert.equal(JSON.stringify(summary).includes('studentId'),false);
  const all=await call('/api/admin/records',undefined,true);assert.equal(all.audit.filter(x=>x.action==='return'&&x.recordId===winner.id).length,1);assert.equal(JSON.stringify(all).includes('tokenHash'),false);
+ // A private officer note must never be exposed by lookup, including closed records.
+ app.db.prepare('UPDATE records SET bikeNote=? WHERE id=?').run('officer-only note',waiting.record.id);
+ const member=await call('/api/me',{token:waitingToken});
+ for(const key of ['contact','contactType','bikeNote','tokenHash'])assert.equal(Object.hasOwn(member.record,key),false);
+ const officer=await call('/api/admin/records',undefined,true);
+ assert.equal(officer.records.find(r=>r.id===waiting.record.id).bikeNote,'officer-only note');
+ assert.equal(officer.records.find(r=>r.id===waiting.record.id).contact,'test-only');
  await app.close();await start();assert.equal((await call('/api/me',{token:waitingToken})).record.status,'cancelled');assert.equal((await call('/api/summary')).total,1);
  app.db.exec("UPDATE opening_loans SET outstanding=3,expectedReturn='2000-01-01',note='test-only inventory' WHERE id=1");
  assert.equal((await call('/api/admin/settings',{total:2,contactUrl:''},true)).status,409);

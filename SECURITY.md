@@ -2,7 +2,7 @@
 
 北科大自由車社借車系統的資安假設、驗證模型、敏感元件、目前設定、已知剩餘風險與開發原則。
 本文件為資安相關規範的權威來源；`README.md`、`supabase/README.md` 的相關段落為摘要，若有出入以本文件為準。
-最後一次完整檢視：2026-09-20（第二輪深入檢查）。
+最後一次檢視與實作：2026-09-24。006／007 的正式部署證據見 `docs/SECURITY-DELIVERY-20260924.md`；測試與真人驗證分開記錄。
 
 ## 1. 系統邊界與攻擊者模型
 
@@ -24,7 +24,7 @@
 - 幹部身分＝Supabase Auth 使用者 **且** UUID 在 `private.admins`。每個 `admin_*` 函式第一步呼叫 `private.require_admin()`；不使用 user metadata 或 email 判斷權限。
 - Supabase Auth 公開註冊已關閉；新增幹部須在 Dashboard 建帳號再 `insert into private.admins`。
 - 社員沒有帳號。憑證是 256-bit 隨機查詢碼（瀏覽器產生，64 位 hex），資料庫只存 SHA-256；查詢不接受學號或流水號。
-- 幹部登入使用 Auth password grant；access token 與 refresh token 存在 `sessionStorage`（分頁關閉即清除）。這是既定決策，代價與限制見第 6 節。
+- 幹部登入使用 Auth password grant；access token 與 refresh token 只存在頁面記憶體，重新整理需重登，新版移除舊 `sessionStorage` 憑證。007 在每次幹部呼叫檢查 `auth.sessions` 仍存在且未超過 `not_after`；已有 verified MFA factor 者還需 `aal2`。尚未設定者顯示設定入口，不能宣稱全員已受 MFA 保護。
 
 ### 本機（`server/app.mjs`）
 - 管理員帳密以 scrypt（salt 16 bytes）雜湊儲存；登入時對不存在的帳號也做一次 scrypt 並用 `timingSafeEqual` 比較，避免帳號枚舉時間差。
@@ -34,7 +34,7 @@
 
 ## 3. 敏感元件與資料
 
-- `private.records`：學號、姓名、聯絡方式（個資）。只有幹部 RPC 與匿名持碼查詢能讀到單筆。公開 `summary()` 只回數字。
+- `private.records`：學號、姓名、聯絡方式（個資）。幹部 RPC 可讀完整紀錄；006 的匿名持碼查詢／登記／重試只回姓名、學號、目的、狀態、時間、順位和紀錄 ID，不回聯絡方式或內部備註。公開 `summary()` 只回統計與社團聯絡入口。
 - `private.audit`：幹部操作紀錄，`admin_records()` 回最近 500 筆並顯示幹部 email；`admin_export()` 回全部並自我記錄一筆 `export`。
 - 匯出檔（`scripts/export-backup.mjs`、幹部頁「匯出備份」）包含全部個資與 token hash，Git 忽略 `backups/`；請私下保存。
 - `public/config.js`：只允許 Project URL 與 publishable／anon key。`scripts/pages-config.mjs` 在部署時拒絕 `sb_secret_` 與非 `anon` role 的 JWT；`tests/security.test.mjs` 掃描 `public/` 確認沒有 secret key、private key、`service_role` JWT。
@@ -51,11 +51,13 @@
 - 交車、歸還、取消、期初歸還、已借出數量調整皆冪等；後兩者以前端 UUID 為操作識別碼，同 ID 不同內容回 409。
 
 ### 濫用防護
-- 正式 `register()`：全站 15／分、90／時、300／日，同來源網路 10 次／10 分鐘（`private.check_register_throttle()`）。重送既有查詢碼不計次。
-- 本機：每 IP 每路徑 120 次／分；`/api/admin/login` 另有每 IP 10 次／分（`loginLimit`），429 附 `Retry-After`。
+- 正式 006：兩版 `register()` 共用每來源 30 次／10 分鐘，包含失敗與重試；成功新增另受全站 15／分、90／時、300／日限制，重試不佔成功新增額度。`summary()`／`lookup()` 共用每來源 1200 次／分鐘。來源不存在時共用 fallback bucket。每來源／種類一筆計數，原子 upsert，每請求最多清除 100 筆一天前的計數。
+- 公開 RPC 僅允許 POST；GET、HEAD、唯讀交易與明確 `Prefer: tx=rollback` 不會讀取資料。正常錯誤回傳 JSON 並設定 HTTP status，讓例外子交易外的計數提交；PostgREST 必須使用 `db-tx-end=commit`。SQL 請求計次不是網路層防 DDoS，不能保護未進入函式的請求。
+- 本機：所有 API 共用每 IP 120 次／分；`/api/admin/login` 另有每 IP 10 次／分（`loginLimit`），429 附 `Retry-After`。本機記憶體限流在重啟後重置，不代表正式資料庫的持久計次。
 - Supabase Auth 的 token endpoint 由供應商內建 IP 限流保護；幹部密碼強度由幹部負責。
 
 ### 瀏覽器端
+- 正式發布時 `scripts/pages-config.mjs` 將 `connect-src` 收斂到目前專案的精確 Supabase HTTPS origin，移除 wildcard 與 localhost。下面 CSP 原文是本機開發範本。
 - 所有 DOM 皆以 `textContent`／`createElement` 建立；`tests/security.test.mjs` 禁止 `innerHTML`、`insertAdjacentHTML`、`document.write`、`eval`、inline script 與 inline event handler。
 - `index.html`、`admin.html` 的 meta CSP：`default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'; require-trusted-types-for 'script'`。最後一項讓 Chromium 在瀏覽器層直接封鎖 `innerHTML`、`eval` 等 DOM XSS sink（已在隔離 QA 驗證應用本身零違規）；Firefox／Safari 忽略此指令，仍靠程式碼規範。
 - 幹部頁 `admin.js` 開頭檢查 `window.self!==window.top`，被嵌入其他網站時隱藏頁面、嘗試跳出並停止執行；這是 Pages 無法送 `frame-ancestors` 時的替代防護。
@@ -102,14 +104,14 @@ npm.cmd test
 
 | 項目 | 說明 | 處理方式 |
 | --- | --- | --- |
-| Refresh token 存 `sessionStorage` | 同一 origin `john-owo.github.io` 上任何其他 Pages 專案若有 XSS 即可讀取。 | 既定決策：此帳號不再發布其他 Pages 專案；日後若需要，改為僅記憶體保存或獨立網域。 |
+| 同來源與查詢碼儲存 | 幹部憑證已改記憶體保存，但同来源惡意程式仍是風險；社員查詢碼仍在 `localStorage` 且無期限／撤銷機制。 | 共用裝置用完清除查詢碼；清除不會撤銷已外流的碼。獨立網域與換碼功能另行處理，不擅自失效既有查詢碼。 |
 | 正式站無法設定回應標頭 | GitHub Pages 不支援 `frame-ancestors`、`Permissions-Policy`、COOP。點擊劫持目前靠 `admin.js` 的 JS 防嵌入與二次確認對話框緩解，JS 防護在 `sandbox` iframe 中仍可隱藏頁面，但不等於標頭。 | 若日後改用可設標頭的託管（Cloudflare Pages／自有網域），把第 4 節本機標頭搬過去。 |
 | 幹部頁 localStorage 鍵名含幹部 email | 已借出數量調整的待重試操作以 `bike-borrowed-adjustment:<路徑>:<email>` 為鍵，登出後鍵名仍可能留在共用裝置。只揭露曾使用的幹部信箱，不含憑證。 | Informational；若要消除可改為雜湊鍵名。 |
 | 使用者文字未過濾 Unicode 方向控制字元 | 姓名／備註可含 U+202E 等雙向覆寫字元，只影響幹部頁顯示順序，不能執行程式。SQL 與本機都已拒絕 ASCII 控制字元。 | Low；需要時在 `register()` 與本機 `text()` 同步加入 `\p{Cf}` 拒絕（需 migration）。 |
-| 學號存在性可被探測 | `register()` 對已有效登記的學號回明確訊息，是既有社員自助行為。SQL 發生例外時，同交易的 throttle insert 也會 rollback，因此目前不能宣稱失敗探測受每來源／全站登記上限完整保護。 | 保留為未解風險；需要 API 邊界限流或另行設計不洩露存在性的登記回應。成功登記上限仍有效。本機 Node limiter 不代表正式 Supabase 已套用保護。 |
+| 學號存在性與冒名 | `register()` 對已有效登記的學號仍回明確訊息；公開自填不驗證本人。006 已讓失敗計次保留，減少單來源反覆探測。 | 使用者確認保留匿名申請、交換生友善與人工審核；不能把限流當成身分驗證。 |
 | 節流來源 IP 依賴代理標頭 | `private.client_hash()` 依序信任 `cf-connecting-ip`、`x-real-ip`、`x-forwarded-for` 最後一段。Supabase 位於 Cloudflare 後方時第一項可信；若供應商架構改變，per-client 節流可被偽造，全站上限仍有效。 | 觀察 Supabase 架構變動；必要時另開 migration 調整順序。 |
-| 匿名 `summary()`／`lookup()` 無限流 | 每次呼叫成本低，但免費方案有配額；大量呼叫屬資源耗盡而非資料外洩。 | 依實際流量在 Supabase 設定 API rate limit／CAPTCHA；不在本專案內宣稱已解決。 |
-| 幹部帳號無 MFA、密碼強度未強制 | Supabase Auth 預設無 MFA；本專案 UI 不支援 TOTP。 | 幹部使用密碼管理器與長密碼；社團可在 Dashboard 啟用 MFA 後再擴充 UI。 |
+| 分散式流量與校園 NAT | 006 增加 RPC 來源限流，但多來源攻擊仍可能耗用資料庫／配額，校園共用網路也共用額度。 | 依實際流量調整，必要時加 API 邊緣防護；不宣稱已解決 DDoS。 |
+| MFA 尚須本人完成設定 | UI 已支援 TOTP，007 對已驗證 factor 強制 aal2；沒有 factor 的既有幹部仍可登入設定。取消或逾時保留未驗證 factor，避免誤刪已成功的驗證器。 | 每位幹部本人完成設定；若累積設定達上限，由管理者核對後只清理未完成項目，保留 verified factors。遺失驗證器由管理者核對身分後處理。 |
 | 個資保留與刪除 | 未實作自動刪除；系統不會自行刪除任何真實資料。 | 由社團決定保留期間後另開 migration，不由開發者擅自訂定。 |
 | 本機服務只適合 loopback | 無 TLS、無 HSTS、限流以 IP 為鍵。 | 若要對外，必須放在具 TLS 的反向代理後，設定 `ALLOWED_ORIGINS`／`ALLOWED_HOSTS`，並由代理補 `Strict-Transport-Security`。 |
 | 真實幹部登入尚待驗證 | 幹部尚未在正式 `admin.html` 完成一次登入以確認 audit email 與匯出。 | 幹部自行登入確認；不需提供密碼給任何人或工具。 |
