@@ -27,8 +27,15 @@
 - `admin_records()` 的 audit 只回最近 500 筆，`actor` 改為幹部 email（查不到時退回 UUID 字串），另附 `actorId`。
 - `admin_export()`：完整 JSON 備份（settings、opening、records 含 token_hash、audit、opening_returns、admins email），呼叫本身寫入 `export` audit。本機對應 `GET /api/admin/export`、`POST /api/admin/cancel-many { ids }`。
 - 備份指令：`node scripts/export-backup.mjs`，以環境變數 `BIKE_ADMIN_EMAIL`／`BIKE_ADMIN_PASSWORD` 提供幹部帳密，輸出到 `backups/`（Git 忽略）。檔案含個資，請私下保存。免費方案無自動備份且閒置 7 天會暫停專案，建議每學期至少匯出一次。
-- 前端目前尚未提供批次取消與匯出按鈕；UI 改版完成後再接 `api.js` 路由。
+- 幹部頁已提供等候名單批次取消與「匯出備份」按鈕；使用頁面內已完成 MFA 的登入狀態。
 
+## 命令列備份與雙重驗證
+
+幹部可在自己的終端設定 `BIKE_ADMIN_EMAIL`、`BIKE_ADMIN_PASSWORD`，再執行 `node scripts/export-backup.mjs`。已設定驗證器的帳號另需 `BIKE_ADMIN_MFA_CODE`（目前六位數驗證碼）。密碼與即時驗證碼只在自己的終端輸入，不要交給代理、貼進聊天或提交到 Git；執行後清除這些終端環境變數。未提供有效碼時不匯出資料，驗證器設定不會被建立或刪除。
+
+工具先呼叫 `admin_session_status()` 核對幹部權限；需要 MFA 時，挑戰並驗證既有驗證器，再用驗證後的 access token 匯出。預設使用伺服器回傳的第一個驗證器，多個驗證器可用 `BIKE_ADMIN_MFA_FACTOR_ID` 指定。未設定 MFA 的幹部沿用原本流程，這不代表所有幹部都已完成 MFA。
+
+完整 JSON 只寫入 `backups/` 的新檔案；同名檔案存在時會中止，不覆寫之前的備份。備份流程只撤銷本次登入（`scope=local`），保留其他裝置的幹部登入。若遠端登出失敗會明確提示；已寫出的備份仍保留。檔案包含個資與 token hash，請私下保管。流程測試使用合成資料與模擬 Auth；真人 MFA 與實際備份復原仍須本人驗證。
 
 ## 期初借出盤點（002）
 
