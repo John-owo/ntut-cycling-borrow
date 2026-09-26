@@ -40,6 +40,9 @@ h1,h2,h3,.brand,.metrics strong{font-family:inherit;font-style:normal}
 input,select,textarea,button,.button{font-family:inherit}.intro{line-height:1.85}.notice p,.fine,.rules p{line-height:1.85}
 
 /* 2026-09-18 CC: compact mobile header, officer bulk actions, export. */
+/* Keep complete member identifiers and officer actions inside narrow screens. */
+.identity-toolbar{flex-wrap:wrap}.admin-page #identity{min-width:0;flex:1 1 16rem;overflow-wrap:anywhere}
+.record-head>div:first-child{min-width:0;overflow-wrap:anywhere}
 .identity-actions{display:flex;gap:18px;align-items:center;flex:none}
 .record-side{display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex:none}
 .pick{flex-direction:row;align-items:center;gap:6px;margin:0;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer}.pick input{width:18px;height:18px;min-height:0;margin:0;padding:0;accent-color:var(--navy)}
