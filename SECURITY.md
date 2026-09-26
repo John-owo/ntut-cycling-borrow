@@ -56,6 +56,11 @@
 - 本機：所有 API 共用每 IP 120 次／分；`/api/admin/login` 另有每 IP 10 次／分（`loginLimit`），429 附 `Retry-After`。本機記憶體限流在重啟後重置，不代表正式資料庫的持久計次。
 - Supabase Auth 的 token endpoint 由供應商內建 IP 限流保護；幹部密碼強度由幹部負責。
 
+### 命令列備份
+- `scripts/export-backup.mjs` 先驗證幹部 session；已設定 MFA 者須在本人終端提供六位數碼，完成既有 factor 的 challenge／verify 後才匯出。不建立或刪除驗證器，不跳過 `007` 的檢查。
+- 備份工具拒絕 secret／service-role key；只寫新檔，遇同名檔不覆寫。請求限時 15 秒，完成或失敗後以 `scope=local` 登出本次 session，遠端登出未確認時明確提示。密碼與即時碼不輸出、不寫入備份。
+- 登出範圍依 [Supabase 官方說明](https://supabase.com/docs/guides/auth/signout)；`tests/export-backup.test.mjs` 使用模擬 Auth 與合成備份驗證，不等於真人 MFA 或復原驗收。
+
 ### 瀏覽器端
 - 正式發布時 `scripts/pages-config.mjs` 將 `connect-src` 收斂到目前專案的精確 Supabase HTTPS origin，移除 wildcard 與 localhost。下面 CSP 原文是本機開發範本。
 - 所有 DOM 皆以 `textContent`／`createElement` 建立；`tests/security.test.mjs` 禁止 `innerHTML`、`insertAdjacentHTML`、`document.write`、`eval`、inline script 與 inline event handler。

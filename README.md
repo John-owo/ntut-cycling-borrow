@@ -47,7 +47,7 @@ node server/start.mjs
 - 每 15 秒更新、切回頁面更新；失敗清楚標示舊資料，超過 45 秒標示過期。後端仍再次檢查狀態與庫存。
 - 無線上選車、完整會員、付款、電子簽名、預約時段或自動通知。
 - 套用 006 後，匿名登記每來源 30 次／10 分鐘（包含失敗與重試），全站成功新增另限 15／分鐘、90／小時、300／日；公開摘要與查詢共用每來源 1200 次／分鐘。超限回 429；幹部可批次取消垃圾登記。這是資料庫 RPC 限流，不等於網路層防 DDoS，詳見 `supabase/README.md`。
-- 備份：幹部以 `node scripts/export-backup.mjs` 匯出完整 JSON 到 `backups/`；Supabase Auth 公開註冊已關閉，新增幹部需在 Dashboard 建帳號再加入 `private.admins`。
+- 備份：幹部以 `node scripts/export-backup.mjs` 匯出完整 JSON 到 `backups/`；已設定雙重驗證者須在自己的終端提供 `BIKE_ADMIN_MFA_CODE`，詳見 `supabase/README.md`。同名備份不覆寫，完成後只登出本次備份 session。Supabase Auth 公開註冊已關閉，新增幹部需在 Dashboard 建帳號再加入 `private.admins`。
 
 ## 驗證與限制
 
