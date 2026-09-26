@@ -11,6 +11,7 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  const rpc=async(sql,args=[]) => (await db.query(`select ${sql} as result`,args)).rows[0].result;
  const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec(`set role ${role}`);};
  const register=async(student,token,type='line')=>rpc('public.register($1,$2,$3,$4,$5)',[student,'Test member',type,'test-only',token]);
+ const registerWithPurpose=async(student,token,purpose)=>rpc('public.register($1,$2,$3,$4,$5,$6)',[student,'Test member','line','test-only',token,purpose]);
  try{
  await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key, email text); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
  await db.exec(readFileSync(new URL('../supabase/migrations/001_borrow.sql',import.meta.url),'utf8'));
@@ -22,6 +23,7 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  await db.exec(readFileSync(new URL('../supabase/migrations/002_opening_loans.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/003_abuse_controls.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/004_borrowed_adjustment.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/005_borrow_purpose.sql',import.meta.url),'utf8'));
  await as('anon');assert.equal((await rpc('public.summary()')).total,null);
  for(const table of ['records','settings','admins','audit'])await assert.rejects(db.query(`select * from private.${table}`),/permission denied/);
  for(const fn of ['public.admin_records()','public.admin_settings(1,\'\')','public.admin_action(1,\'lend\',null)'])await assert.rejects(rpc(fn),/permission denied/);
@@ -123,5 +125,15 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  assert.deepEqual(adjustmentDump.borrowedAdjustments.find(a=>a.request_id===adjustmentId).receipt,adjusted.receipt);
  await db.exec('reset role');assert.deepEqual((await db.query('select * from private.records order by id')).rows,original);
  const hardened=(await db.query("select prosecdef,proconfig from pg_proc where proname='admin_set_borrowed'")).rows[0];assert.ok(hardened.prosecdef&&hardened.proconfig.includes('search_path=""'));
+ await as('anon');
+ await assert.rejects(registerWithPurpose('PURPOSE','9'.repeat(64),'other'),/借車目的/);
+ const purposeRecord=await registerWithPurpose('PURPOSE','9'.repeat(64),'personal_ride');
+ assert.equal(purposeRecord.record.purpose,'personal_ride');
+ assert.equal((await registerWithPurpose('PURPOSE','9'.repeat(64),'personal_ride')).record.id,purposeRecord.record.id);
+ await assert.rejects(registerWithPurpose('PURPOSE','9'.repeat(64),'group_ride'),/查詢碼已使用/);
+ await as('authenticated',president);
+ assert.equal((await rpc('public.admin_records()')).records.find(r=>r.id===purposeRecord.record.id).purpose,'personal_ride');
+ await db.exec('reset role');
+ assert.equal((await db.query('select purpose from private.records where id=$1',[a.record.id])).rows[0].purpose,null);
  }finally{await db.close();}
 });
