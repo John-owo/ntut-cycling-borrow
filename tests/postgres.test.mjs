@@ -11,6 +11,7 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  const rpc=async(sql,args=[]) => (await db.query(`select ${sql} as result`,args)).rows[0].result;
  const as=async(role,id='')=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec(`set role ${role}`);};
  const register=async(student,token,type='line')=>rpc('public.register($1,$2,$3,$4,$5)',[student,'Test member',type,'test-only',token]);
+ const registerWithPurpose=async(student,token,purpose)=>rpc('public.register($1,$2,$3,$4,$5,$6)',[student,'Test member','line','test-only',token,purpose]);
  try{
  await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key, email text); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
  await db.exec(readFileSync(new URL('../supabase/migrations/001_borrow.sql',import.meta.url),'utf8'));
@@ -21,6 +22,8 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  assert.equal((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='private' and c.relkind='r' and c.relrowsecurity")).rows[0].n,4);
  await db.exec(readFileSync(new URL('../supabase/migrations/002_opening_loans.sql',import.meta.url),'utf8'));
  await db.exec(readFileSync(new URL('../supabase/migrations/003_abuse_controls.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/004_borrowed_adjustment.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/migrations/005_borrow_purpose.sql',import.meta.url),'utf8'));
  await as('anon');assert.equal((await rpc('public.summary()')).total,null);
  for(const table of ['records','settings','admins','audit'])await assert.rejects(db.query(`select * from private.${table}`),/permission denied/);
  for(const fn of ['public.admin_records()','public.admin_settings(1,\'\')','public.admin_action(1,\'lend\',null)'])await assert.rejects(rpc(fn),/permission denied/);
@@ -94,5 +97,43 @@ test('Production SQL on embedded PostgreSQL: grants, identity, queue, retry, inv
  assert.equal(dump.opening.outstanding,2);assert.equal(dump.settings.total,6);
  assert.equal((await rpc('public.admin_records()')).audit[0].action,'export');
  await as('anon');assert.ok(!JSON.stringify(await rpc('public.summary()')).includes('token_hash'));
+ // 004: only officers can adjust the total; member loans remain authoritative.
+ let sequence=100;const uuid=()=>`00000000-0000-4000-8000-${String(sequence++).padStart(12,'0')}`;
+ const adjust=(borrowed,expected=5,opening=2,id=uuid(),reason='  盤點更正  ')=>rpc('public.admin_set_borrowed($1,$2,$3,$4,$5)',[borrowed,expected,opening,id,reason]);
+ await assert.rejects(adjust(4),/permission denied/);
+ await assert.rejects(db.query('select * from private.borrowed_adjustments'),/permission denied/);
+ await as('authenticated',outsider);await assert.rejects(adjust(4),/管理員/);
+ await as('authenticated',president);
+ await db.exec('reset role');const original=(await db.query('select * from private.records order by id')).rows;await as('authenticated',president);
+ for(const value of [-1,null,10001])await assert.rejects(adjust(value),/格式/);
+ await assert.rejects(adjust(7),/超過總車數/);await assert.rejects(adjust(2),/低於社員/);
+ for(const reason of ['', '   ',null,'x'.repeat(501)])await assert.rejects(adjust(4,5,2,uuid(),reason),/格式/);
+ await assert.rejects(adjust(4,4,2),/數量已變更/);await assert.rejects(adjust(4,5,1),/數量已變更/);
+ const adjustmentId=uuid();const adjusted=await adjust(4,5,2,adjustmentId);
+ assert.equal(adjusted.summary.borrowed,4);assert.equal(adjusted.summary.available,2);assert.equal(adjusted.opening.outstanding,1);
+ assert.equal(adjusted.receipt.reason,'盤點更正');assert.equal(adjusted.receipt.actor,president);assert.equal(adjusted.receipt.realBorrowed,3);
+ assert.deepEqual((await adjust(4,5,2,adjustmentId)).receipt,adjusted.receipt);
+ for(const args of [[5,5,2,adjustmentId],[4,4,2,adjustmentId],[4,5,1,adjustmentId],[4,5,2,adjustmentId,'different']])await assert.rejects(adjust(...args),/不同調整內容/);
+ // Two requests based on one snapshot: the second sees the committed first result and fails closed.
+ const races=await Promise.allSettled([adjust(5,4,1),adjust(6,4,1)]);
+ assert.equal(races.filter(r=>r.status==='fulfilled').length,1);assert.equal(races.filter(r=>r.status==='rejected'&&/數量已變更/.test(r.reason.message)).length,1);
+ const now=await rpc('public.admin_records()');assert.equal((await adjust(3,now.summary.borrowed,now.opening.outstanding)).opening.outstanding,0);
+ // Retrying the old successful request after later changes returns its original receipt without another mutation.
+ assert.deepEqual((await adjust(4,5,2,adjustmentId)).receipt,adjusted.receipt);assert.equal((await rpc('public.summary()')).borrowed,3);
+ const adjustmentDump=await rpc('public.admin_export()');assert.equal(adjustmentDump.borrowedAdjustments.length,3);
+ assert.equal(adjustmentDump.audit.filter(a=>a.action==='borrowed-adjustment').length,3);
+ assert.deepEqual(adjustmentDump.borrowedAdjustments.find(a=>a.request_id===adjustmentId).receipt,adjusted.receipt);
+ await db.exec('reset role');assert.deepEqual((await db.query('select * from private.records order by id')).rows,original);
+ const hardened=(await db.query("select prosecdef,proconfig from pg_proc where proname='admin_set_borrowed'")).rows[0];assert.ok(hardened.prosecdef&&hardened.proconfig.includes('search_path=""'));
+ await as('anon');
+ await assert.rejects(registerWithPurpose('PURPOSE','9'.repeat(64),'other'),/借車目的/);
+ const purposeRecord=await registerWithPurpose('PURPOSE','9'.repeat(64),'personal_ride');
+ assert.equal(purposeRecord.record.purpose,'personal_ride');
+ assert.equal((await registerWithPurpose('PURPOSE','9'.repeat(64),'personal_ride')).record.id,purposeRecord.record.id);
+ await assert.rejects(registerWithPurpose('PURPOSE','9'.repeat(64),'group_ride'),/查詢碼已使用/);
+ await as('authenticated',president);
+ assert.equal((await rpc('public.admin_records()')).records.find(r=>r.id===purposeRecord.record.id).purpose,'personal_ride');
+ await db.exec('reset role');
+ assert.equal((await db.query('select purpose from private.records where id=$1',[a.record.id])).rows[0].purpose,null);
  }finally{await db.close();}
 });

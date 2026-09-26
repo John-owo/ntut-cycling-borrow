@@ -1,0 +1,13 @@
+/* Generated from NTUT Cycling design-studio/brand/tokens.json; version 1.0.0; SHA256 a49879bddd6bd85c4db2cb0c334f017b31d26feeb190830ae55912c505b56cd3.
+   Run scripts/sync-brand.mjs with the canonical JSON; do not edit generated values. */
+:root{
+  --brand-background:#FFFFFF;
+  --brand-text:#14181F;
+  --brand-body:#333E4D;
+  --brand-accent:#243C8A;
+  --brand-muted:#586476;
+  --brand-dark:#142342;
+  --brand-onDark:#FFFFFF;
+  --brand-supportOnDark:#E0E7F5;
+  --brand-accentOnDark:#AFCAFF;
+}

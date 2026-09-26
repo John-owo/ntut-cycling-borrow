@@ -2,6 +2,8 @@ name: Validate and publish GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,10 +17,11 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm test
   deploy:
     needs: validate
-    if: ${{ vars.SUPABASE_URL != '' && vars.SUPABASE_PUBLISHABLE_KEY != '' }}
+    if: ${{ github.event_name != 'pull_request' && vars.SUPABASE_URL != '' && vars.SUPABASE_PUBLISHABLE_KEY != '' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -39,10 +42,12 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
         run: node scripts/pages-config.mjs
+      - name: Package borrowing service only
+        run: node scripts/package-pages.mjs
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
-          path: public
+          path: .pages-site
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
