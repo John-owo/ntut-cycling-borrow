@@ -6,3 +6,5 @@ node_modules/
 test-results/
 *.log
 backups/
+.claude/
+.pages-site/
