@@ -36,7 +36,7 @@ export async function exportBackup({env=process.env,fetchImpl=fetch,outputDir=re
     if (!response.ok) throw new Error(data.error_description || data.message || data.msg || `HTTP ${response.status}`);
     return data;
   }
-  
+
   let auth = await call('/auth/v1/token?grant_type=password', {method: 'POST', headers: headers(), body: JSON.stringify({email, password})});
   try {
     const state = await call('/rest/v1/rpc/admin_session_status', {method:'POST',headers:headers(auth.access_token),body:'{}'});
