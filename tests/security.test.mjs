@@ -76,7 +76,7 @@ test('Loopback server: Host allowlist blocks DNS rebinding, login has its own th
     assert.equal((await admin('/api/admin/settings', { total: 3, contactUrl: 'https://officer:secret@example.org/' })).status, 400);
     assert.equal((await admin('/api/admin/settings', { total: 3, contactUrl: 'https://example.org/contact' })).status, 200);
     // Multibyte JSON split across TCP chunks must be decoded intact, not as replacement characters.
-    const name = '吳測試'.repeat(8); const payload = Buffer.from(JSON.stringify({ studentId: 'utf8-1', name, contactType: 'line', contact: 'test-only', token: 'c'.repeat(64) }));
+    const name = '吳測試'.repeat(8); const payload = Buffer.from(JSON.stringify({ studentId: 'utf8-1', name, contactType: 'line', contact: 'test-only', purpose: 'group_ride', token: 'c'.repeat(64) }));
     const cut = payload.indexOf(Buffer.from('吳')) + 1;
     const split = await new Promise((resolve, reject) => { const request = http.request({ host: '127.0.0.1', port, path: '/api/register', method: 'POST', agent: false, headers: { 'Content-Type': 'application/json' } }, response => { let data = ''; response.on('data', c => data += c); response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) })); }); request.on('error', reject); request.write(payload.subarray(0, cut)); setTimeout(() => request.end(payload.subarray(cut)), 30); });
     assert.equal(split.status, 200); assert.equal(split.body.record.name, name);
