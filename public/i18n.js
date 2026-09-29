@@ -1,7 +1,8 @@
-import {english} from './translations.js?v=security0924';
+import {english} from './translations.js?v=appointments0929';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const patterns=[
+ [/^確認 (.+) 已主動聯絡，且雙方已確認上述預計時間？$/,m=>`Confirm that ${m[1]} has contacted the club and both parties agreed to the proposed times?`],
  [/^線上借用 (\d+) 台，未建明細 (\d+) 台；可設定範圍 (\d+)～(\d+) 台。$/,m=>`Online loans: ${m[1]}; loans without details: ${m[2]}. Allowed range: ${m[3]}–${m[4]} bikes.`],
  [/^更新於 (.+)$/,m=>`Updated ${m[1]}`],
  [/^目前登入：(.+)$/,m=>`Signed in: ${m[1]}`],
@@ -19,8 +20,8 @@ const patterns=[
  [/^預計歸還：(.+)。這只是提醒，實際收車後才更新數量。$/,m=>`Expected return: ${m[1]}. Reminder only; the count changes after receipt is confirmed.`],
  [/^重試確認歸還 (\d+) 台$/,m=>`Retry return of ${m[1]} bikes`],
  [/^確認已實際收到 (\d+) 台既有借用的社車？請核對原紙本紀錄。$/,m=>`Confirm receipt of ${m[1]} opening-loan bikes? Check the original paper records.`],
- [/^(確認借出|確認歸還|取消登記)已保存。$/,m=>`${english[m[1]]}: saved.`],
- [/^(.+) · (.+) · (確認借出|確認歸還|取消登記|lend|return|cancel)$/,m=>`${m[1]} · ${m[2]} · ${english[m[3]]||m[3]}`],
+ [/^(確認聯絡與時間|確認借出|確認歸還|取消登記)已保存。$/,m=>`${english[m[1]]}: saved.`],
+ [/^(.+) · (.+) · (確認聯絡與時間|確認借出|確認歸還|取消登記|lend|return|cancel)$/,m=>`${m[1]} · ${m[2]} · ${english[m[3]]||m[3]}`],
  [/^(.+) · (.+) · 確認既有借用歸還 (.+) 台$/,m=>`${m[1]} · ${m[2]} · Opening-loan return: ${m[3]} bikes`],
  [/^已選取 (\d+) 筆$/,m=>`${m[1]} selected`],
  [/^確認取消 (\d+) 筆等候登記？這不會改變已借出車數。$/,m=>`Cancel ${m[1]} waiting registrations? The on-loan count will not change.`],

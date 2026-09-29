@@ -146,3 +146,14 @@ test('Borrowed adjustments preserve concurrency snapshot, reason and retry ident
  }
  c.done();
 });
+
+
+test('Scheduled registration preserves proposed dates and multiline notes; officer confirmation uses authenticated RPC',async t=>{
+ const c=await client(t,{username:'officer@example.test',token:'officer-token',expires:Date.now()+3600000});
+ const body={studentId:'QA01',name:'Synthetic',contactType:'instagram',contact:'synthetic',token:'a'.repeat(64),purpose:'group_ride',inspectionAt:'2026-10-01T01:00:00.000Z',rentalAt:'2026-10-01T02:00:00.000Z',returnAt:'2026-10-02T02:00:00.000Z',rentalNote:'First line\nSecond line',returnNote:'Evening return'};
+ c.expect({path:'/rest/v1/rpc/register',body:{p_student_id:body.studentId,p_name:body.name,p_contact_type:body.contactType,p_contact:body.contact,p_token:body.token,p_purpose:body.purpose,p_inspection_at:body.inspectionAt,p_rental_at:body.rentalAt,p_return_at:body.returnAt,p_rental_note:body.rentalNote,p_return_note:body.returnNote},result:{record:{id:7}}});
+ await c.api.api('/api/register',body);
+ c.expect({path:'/rest/v1/rpc/admin_confirm_schedule',token:'officer-token',body:{p_id:7},result:{record:{id:7,scheduleConfirmedAt:'2026-10-01T00:00:00Z'}}});
+ const result=await c.api.api('/api/admin/confirm-schedule',{id:7},true);
+ assert.equal(result.record.scheduleConfirmedAt,'2026-10-01T00:00:00Z');c.done();
+});

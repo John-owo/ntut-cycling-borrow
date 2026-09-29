@@ -22,10 +22,19 @@ test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',asyn
  assert.equal((await call('/api/admin/login',{username:'president',password:'wrong'})).status,401);
  bearer=(await call('/api/admin/login',{username:'president',password:'test-password-123'})).token;
  assert.equal((await call('/api/admin/settings',{total:1,contactUrl:''},true)).status,200);
- const a=registration('a'),b=registration('b');const ra=await call('/api/register',a),rb=await call('/api/register',b);
+ const plan={inspectionAt:'2026-10-01T08:00:00.000Z',rentalAt:'2026-10-01T09:00:00.000Z',returnAt:'2026-10-02T09:00:00.000Z',rentalNote:'借用備註',returnNote:'歸還備註'};const a={...registration('a'),...plan},b=registration('b');const ra=await call('/api/register',a),rb=await call('/api/register',b);
  assert.equal(ra.record.position,1);assert.equal(rb.record.standby,1);
  assert.equal(ra.record.purpose,'group_ride');
- assert.deepEqual(Object.keys(ra.record).sort(),['id','studentId','name','purpose','status','createdAt','updatedAt','position','standby'].sort());
+ assert.equal(ra.record.rentalNote,plan.rentalNote);assert.equal(ra.record.scheduleConfirmedAt,null);
+ assert.equal((await call('/api/admin/confirm-schedule',{id:ra.record.id})).status,401);
+ assert.equal((await call('/api/admin/action',{id:ra.record.id,action:'lend'},true)).status,409);const confirmed=await call('/api/admin/confirm-schedule',{id:ra.record.id},true);assert.ok(confirmed.record.scheduleConfirmedAt);
+ assert.equal((await call('/api/admin/confirm-schedule',{id:ra.record.id},true)).record.scheduleConfirmedAt,confirmed.record.scheduleConfirmedAt);
+ assert.equal((await call('/api/admin/confirm-schedule',{id:rb.record.id},true)).status,409);
+ assert.equal((await call('/api/admin/records',undefined,true)).audit.filter(a=>a.action==='confirm-schedule').length,1);
+ assert.equal((await call('/api/register',{...a,returnAt:plan.rentalAt})).status,400);
+ assert.equal((await call('/api/register',{...a,rentalNote:'different'})).status,409);
+
+ assert.deepEqual(Object.keys(ra.record).sort(),['id','studentId','name','purpose','status','createdAt','updatedAt','position','standby','inspectionAt','rentalAt','returnAt','rentalNote','returnNote','scheduleConfirmedAt'].sort());
  assert.equal((await call('/api/register',a)).record.id,ra.record.id);
  assert.equal((await call('/api/register',{...a,purpose:'personal_ride'})).status,409);
  assert.equal((await call('/api/register',registration('a'))).status,409);
@@ -106,7 +115,7 @@ test('Borrowed adjustment: authenticated, bounded, stale-safe and permanent retr
  const dir=mkdtempSync(join(tmpdir(),'bike-adjustment-'));const dbPath=join(dir,'db.sqlite');let app,base,bearer;
  const start=async()=>{app=createApp({dbPath});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
  const call=async(path,body,admin=true)=>{const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${bearer}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,...await r.json()};};
- let seq=100;const form=(borrowed,expectedBorrowed=3,expectedOpening=2)=>({borrowed,expectedBorrowed,expectedOpening,requestId:`00000000-0000-4000-8000-${String(seq++).padStart(12,'0')}`,reason:'  盤點更正  '});
+ let seq=100;const form=(borrowed,expectedBorrowed=3,expectedOpening=2)=>({borrowed,expectedBorrowed,expectedOpening,requestId:`00000000-0000-4000-8000-${String(seq++).padStart(12,'0')}`,reason:'  逶､鮟樊峩豁｣  '});
  try{
  await start();app.addAdmin('officer','test-password-123');bearer=(await call('/api/admin/login',{username:'officer',password:'test-password-123'},false)).token;
  assert.equal((await call('/api/admin/borrowed',form(1))).status,409); // unset inventory
@@ -120,7 +129,7 @@ test('Borrowed adjustment: authenticated, bounded, stale-safe and permanent retr
  for(const reason of ['', ' '.repeat(5),'x'.repeat(501)])assert.equal((await call('/api/admin/borrowed',{...form(4),reason})).status,400);
  assert.equal((await call('/api/admin/borrowed',form(4,2,2))).status,409);
  assert.equal((await call('/api/admin/borrowed',form(4,3,1))).status,409);
- const first=form(4);const changed=await call('/api/admin/borrowed',first);assert.equal(changed.status,200);assert.equal(changed.opening.outstanding,3);assert.equal(changed.summary.available,1);assert.equal(changed.receipt.reason,'盤點更正');
+ const first=form(4);const changed=await call('/api/admin/borrowed',first);assert.equal(changed.status,200);assert.equal(changed.opening.outstanding,3);assert.equal(changed.summary.available,1);assert.equal(changed.receipt.reason,'逶､鮟樊峩豁｣');
  await app.close();await start();
  const replay=await call('/api/admin/borrowed',first);assert.deepEqual(replay.receipt,changed.receipt);
  for(const change of [{borrowed:5},{expectedBorrowed:4},{expectedOpening:3},{reason:'different'}])assert.equal((await call('/api/admin/borrowed',{...first,...change})).status,409);

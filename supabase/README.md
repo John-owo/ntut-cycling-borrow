@@ -74,3 +74,9 @@ RPC 名稱與參數：`summary()`、新版 `register(p_student_id,p_name,p_conta
 - 中斷／重新連線後查詢同碼仍存在。兩裝置經真 PostgREST 與 Auth 驗證相同數字與最新順位，再驗證無效／過期 JWT、跨帳號私人隔離。
 
 本 migration 已通過嵌入式 PostgreSQL 測試，尚未在託管 Supabase、真 PostgREST / Auth 或多連線環境執行；正式部署仍需上述驗證。Supabase 的 API 限流/CAPTCHA 配置應在營運前依公開登記量確認；SQL 功能本身不宣稱已提供本機 HTTP 限流。
+
+## 008：社員預計時間與幹部確認
+
+先套用 `migrations/008_member_schedule.sql`，再發布新版前端。此 migration 在 private.records 新增預計確認車況、租用、歸還時間、社員租用／歸還備註與幹部確認時間；不補造歷史資料。保留既有五／六參數 register，新增十一參數版本。持碼查詢可讀取本人新增欄位；幹部內部 bikeNote 與聯絡資料仍不對社員查詢公開。
+
+`admin_confirm_schedule(p_id)` 僅允許通過既有幹部身分及 MFA 檢查的管理者呼叫，重送不重複寫 audit。確認代表已核對社員主動聯絡與預計安排；不改變庫存。新版完整時間紀錄須先確認安排才能交車，舊版無時間紀錄沿用原交車流程。匿名直接讀 private 資料表的權限維持禁止。
