@@ -60,3 +60,13 @@ input,select,textarea,button,.button{font-family:inherit}.intro{line-height:1.85
 #registration-fields{border:0;padding:0;margin:20px 0 0;min-width:0;width:100%}
 #registration-fields legend{margin-bottom:14px;padding:0;color:var(--navy);font-size:16px;font-weight:700}
 #mfa-secret{display:block;overflow-wrap:anywhere;user-select:all;padding:12px;background:var(--paper);line-height:1.6}
+
+.contact-required{margin:24px 0;padding:24px;background:#edf0ff;border:3px solid var(--navy);color:var(--navy)}
+.contact-required strong{display:block;font-size:clamp(23px,3vw,32px);line-height:1.5}
+.contact-required p{font-size:clamp(20px,2.5vw,27px);font-weight:800;color:var(--ink);margin:12px 0 20px}
+.appointment-details{margin:16px 0;padding:16px;background:var(--wash)}
+.appointment-details dl{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:8px 16px;margin:0}
+.appointment-details dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.appointment-status{font-weight:700;color:var(--navy)}
+.contact-block .button{margin-bottom:12px}
+@media(max-width:480px){.appointment-details dl{grid-template-columns:1fr;gap:4px}.appointment-details dd{margin-bottom:12px}.contact-required{padding:18px}}

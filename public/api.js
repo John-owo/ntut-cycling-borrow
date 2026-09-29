@@ -45,7 +45,7 @@ async function adminToken() {
 export async function api(path, body, admin=false) {
   if(admin&&mfaState?.required)throw Object.assign(new Error('MFA_REQUIRED'),{status:403});
   if(cloud) {
-    const routes={ '/api/admin/borrowed':['admin_set_borrowed',{p_borrowed:body?.borrowed,p_expected_borrowed:body?.expectedBorrowed,p_expected_opening:body?.expectedOpening,p_request_id:body?.requestId,p_reason:body?.reason}], '/api/admin/opening-return':['admin_return_opening',{p_count:body?.count,p_request_id:body?.requestId}], '/api/admin/cancel-many':['admin_cancel_many',{p_ids:body?.ids}], '/api/admin/export':['admin_export',{}], '/api/summary':['summary',{}], '/api/register':['register',{p_student_id:body?.studentId,p_name:body?.name,p_contact_type:body?.contactType,p_contact:body?.contact,p_token:body?.token,p_purpose:body?.purpose}], '/api/me':['lookup',{p_token:body?.token}], '/api/admin/records':['admin_records',{}], '/api/admin/action':['admin_action',{p_id:body?.id,p_action:body?.action,p_bike_note:body?.bikeNote??null}], '/api/admin/settings':['admin_settings',{p_total:body?.total,p_contact_url:body?.contactUrl}] };
+    const routes={ '/api/admin/confirm-schedule':['admin_confirm_schedule',{p_id:body?.id}], '/api/admin/borrowed':['admin_set_borrowed',{p_borrowed:body?.borrowed,p_expected_borrowed:body?.expectedBorrowed,p_expected_opening:body?.expectedOpening,p_request_id:body?.requestId,p_reason:body?.reason}], '/api/admin/opening-return':['admin_return_opening',{p_count:body?.count,p_request_id:body?.requestId}], '/api/admin/cancel-many':['admin_cancel_many',{p_ids:body?.ids}], '/api/admin/export':['admin_export',{}], '/api/summary':['summary',{}], '/api/register':['register',{p_student_id:body?.studentId,p_name:body?.name,p_contact_type:body?.contactType,p_contact:body?.contact,p_token:body?.token,p_purpose:body?.purpose,p_inspection_at:body?.inspectionAt,p_rental_at:body?.rentalAt,p_return_at:body?.returnAt,p_rental_note:body?.rentalNote,p_return_note:body?.returnNote}], '/api/me':['lookup',{p_token:body?.token}], '/api/admin/records':['admin_records',{}], '/api/admin/action':['admin_action',{p_id:body?.id,p_action:body?.action,p_bike_note:body?.bikeNote??null}], '/api/admin/settings':['admin_settings',{p_total:body?.total,p_contact_url:body?.contactUrl}] };
     const route=routes[path]; if(!route)throw new Error('不支援的操作。');
     return request(`${cfg.supabaseUrl}/rest/v1/rpc/${route[0]}`,{method:'POST',headers:cloudHeaders(admin?await adminToken():undefined),body:JSON.stringify(route[1])});
   }
@@ -103,4 +103,12 @@ export async function logout() {
 }
 export function safeContact(url) { try {const u=new URL(url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;} }
 export function node(tag,text,cls) { const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el; }
-export function date(value) { return value ? new Date(value).toLocaleString('zh-TW',{hour12:false}) : '—'; }
+export function date(value) { return value ? new Date(value).toLocaleString('zh-TW',{hour12:false,timeZone:'Asia/Taipei'}) : '—'; }
+
+export function appointmentDetails(record) {
+  const block=node('div',undefined,'appointment-details');
+  block.append(node('p',record.scheduleConfirmedAt?'幹部已確認聯絡與預計時間。':record.status==='waiting'?'尚待主動聯絡與幹部確認；資料保存不代表登記成功。':'此紀錄未保存聯絡與時間確認。','appointment-status'));
+  const dl=node('dl');
+  for(const [label,value] of [['預計約定確認車況時間',date(record.inspectionAt)],['預計租用時間',date(record.rentalAt)],['預計歸還時間',date(record.returnAt)],['租用備註',record.rentalNote||'—'],['歸還備註',record.returnNote||'—'],['幹部確認時間',date(record.scheduleConfirmedAt)]])dl.append(node('dt',label),node('dd',value,'user-content'));
+  block.append(dl);return block;
+}

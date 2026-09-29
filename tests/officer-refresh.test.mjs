@@ -19,7 +19,7 @@ function page(){
  const window={addEventListener(){}};window.self=window;window.top=window;
  const context={window,document:{documentElement:{},getElementById:get,querySelectorAll:()=>[],addEventListener(){}},setInterval(){},
   localStorage:{getItem:()=>null},location:{pathname:'/admin.html'},cloud:false,currentAdmin:()=>officer,confirmLocalized:()=>true,
-  node:(tag,text)=>({...element(),tag,textContent:text}),date:String,
+  node:(tag,text)=>({...element(),tag,textContent:text}),date:String,appointmentDetails:()=>element(),
   FormData:class {constructor(form){this.form=form;}get(key){return this.form.elements[key].value;}},
   api:(path,body)=>new Promise((resolve,reject)=>calls.push({path,body,resolve,reject}))};
  runInNewContext(source,context);officer='test-officer';

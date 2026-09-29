@@ -14,16 +14,16 @@ function element(){
   addEventListener(type,fn){listeners.set(type,fn);},append(...items){this.children.push(...items);},
   replaceChildren(...items){this.children=items;},querySelector(){return this.button??=element();},reset(){}};
 }
-function page(saved=oldToken){
+function page(saved=oldToken,dates={inspectionAt:"2026-10-01T09:00",rentalAt:"2026-10-01T10:00",returnAt:"2026-10-02T10:00"}){
  const elements=new Map(),stored=new Map(saved?[['bike-query-token',saved]]:[]),calls=[],intervals=[];
  const get=id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);};
  get('personal-result').hidden=true;
  const context={document:{getElementById:get,addEventListener(){},hidden:false,activeElement:null},
   window:{addEventListener(){}},localStorage:{getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value),removeItem:key=>stored.delete(key)},
   requestAnimationFrame(){},setInterval:(fn,ms)=>intervals.push({fn,ms}),confirmLocalized:()=>true,
-  node:(tag,text)=>({...element(),tag,textContent:text}),date:String,
+  node:(tag,text)=>({...element(),tag,textContent:text}),date:String,appointmentDetails:()=>element(),
   api:(path,body)=>new Promise((resolve,reject)=>calls.push({path,body,resolve,reject})),safeContact:()=>null,
-  FormData:class {constructor(){return new Map([['studentId','NEW'],['name','new'],['purpose','group_ride'],['contactType','line'],['contact','synthetic']]);}},
+  FormData:class {constructor(){return new Map([['studentId','NEW'],['name','new'],['purpose','group_ride'],['contactType','line'],['contact','synthetic'],...Object.entries(dates)]);}},
   crypto:{getRandomValues:array=>array.fill(1)}};
  runInNewContext(source,context);
  return{get,stored,calls,poll:()=>intervals.find(x=>x.ms===15000).fn(),
@@ -98,4 +98,19 @@ test('Registration invalidates a public summary that was already in flight',asyn
  p.calls[1].resolve(summary(0));await settle();
  assert.equal(p.get('waiting').textContent,1);
  assert.equal(p.stored.get('bike-query-token'),'01'.repeat(32));
+});
+
+
+test('An unsupported datetime year shows validation without locking registration or lookup',async()=>{
+ const dates={inspectionAt:'999999-10-01T09:00',rentalAt:'2026-10-01T10:00',returnAt:'2026-10-02T10:00'};
+ const p=page('',dates);p.calls[0].resolve(summary(0));await settle();
+ p.get('borrow-terms-text').scrollTop=100;p.dispatch('borrow-terms-text','scroll');
+ p.get('terms-agree').checked=true;p.dispatch('terms-agree','change');
+ await p.dispatch('register-form','submit');
+ assert.equal(p.calls.length,1);assert.equal(p.get('register-message').textContent,'預計時間格式不正確');
+ assert.equal(p.get('register-button').disabled,false);assert.equal(p.get('lookup-form').querySelector().disabled,false);
+ dates.inspectionAt='2026-10-01T09:00';const task=p.dispatch('register-form','submit');
+ assert.equal(p.calls[1].path,'/api/register');assert.equal(p.calls[1].body.inspectionAt,'2026-10-01T01:00:00.000Z');
+ p.calls[1].resolve({record:record('new'),summary:summary(1)});await task;
+ assert.equal(p.get('register-button').disabled,false);
 });
