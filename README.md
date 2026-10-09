@@ -14,10 +14,10 @@
 
 本網站僅提供社車借用、本人查詢與幹部管理，不包含社團介紹或活動行銷頁。舊 `club.html` 會導回借車首頁。歷史圖片保留在原位置，僅供來源保存，不列入發布內容。
 
-GitHub Pages 必須發布 `node scripts/package-pages.mjs` 產生的 `.pages-site/`，不要直接上傳整個 `public/`。打包程式只複製明確允許的借車檔案，並拒絕已存在的輸出目錄；本機重跑時可指定新的目錄名稱：`node scripts/package-pages.mjs work/pages-preview-new`。現有 Actions 已改用此打包流程，但本輪未部署。
+GitHub Pages 必須發布 `node scripts/package-pages.mjs` 產生的 `.pages-site/`，不要直接上傳整個 `public/`。打包程式只複製明確允許的借車檔案，並拒絕已存在的輸出目錄；本機重跑時可指定新的目錄名稱：`node scripts/package-pages.mjs work/pages-preview-new`。現有 Actions 使用此打包流程；本次正式發布證據見交付紀錄。
 
 部署目標：GitHub Pages 前端 + Supabase 免費方案資料庫與管理登入。不需要另購網域。
-目前本機版可實際保存登記、查詢順位、借出、歸還、取消與設定；Supabase 資料庫已套用 001／002，公開 API 與匿名權限隔離已實測；兩位幹部實際登入仍須完成驗證。不要把本機測試當作完整雲端验收。
+本機及正式資料庫皆支援舊登記與新編號車流程；正式資料庫已核對新 RPC、八台待盤點車與匿名隔離。幹部實際登入、現場盤點與真人取還車仍須完成驗收。
 
 ## 本機操作
 
@@ -37,10 +37,10 @@ node server/start.mjs
 
 ## 雲端設定
 
-1. 在自己的 Supabase 免費專案依序執行 `supabase/migrations/001_borrow.sql`、`002_opening_loans.sql`。先確認是專用新專案，避免与既有同名表衝突。此 migration 用 transaction，一次執行；請勿在含正式資料的專案任意重跑或刪表。
+1. 新的專用 Supabase 專案先依序執行 migrations 001–008，再套用 `supabase/releases/20261009-lifecycle.sql`（009–011 整合交易）。既有正式專案已安裝，不可重跑、刪表或拿真實借單測試；整合交易含防重跑與舊資料雜湊檢查。
 2. 在 Supabase Auth 建立兩位幹部各自的登入身分，將各自 UUID 加入 `private.admins`。詳見 `supabase/README.md`。一般註冊用戶不會自動取得管理權；前端沒有幹部自行註冊功能。關閉不需要的公開 Auth signup。
 3. GitHub 儲存庫的 Actions variables 設定 `SUPABASE_URL` 與 `SUPABASE_PUBLISHABLE_KEY`（公開 publishable／anon key，不是 secret/service_role key）。私人金鑰與資料庫密碼不能進 GitHub Pages。
-4. GitHub Pages 的來源選 GitHub Actions。workflow 只會發布 `public/`，不包含本機資料庫或 SQL source；正式網站無需 Node 伺服器。
+4. GitHub Pages 的來源選 GitHub Actions。workflow 只發布 allowlist 打包的 `.pages-site/`，不包含本機資料庫、SQL source 或未列入的歷史圖片；正式網站無需 Node 伺服器。
 5. 登入網站管理端，填實際總車數、社團联絡入口。先用隔離測試專案驗證登入、匿名隔離、登記、跨裝置查詢、交車與收車，再開放社員使用。
 
 尚未設定兩個公開變數時，CI 執行測試、跳過正式發布，不以空後端交付可用系統。若需要本機檢查雲端前端，把 `public/config.js` 設成 Supabase 模式；只可放公開連線資訊。
@@ -70,7 +70,7 @@ npm.cmd test
 
 SQLite 測試使用真 HTTP 與磁碟資料庫，包含並行最後一台、冪等、取消、歸還、越序交車、資料保存與權限。PostgreSQL 測試使用 PGlite 真 PostgreSQL 引擎執行 migration 與角色隔離；Auth 的使用者身分在測試內模擬，並非 Supabase Auth 的 live 驗證。PGlite 單連線不等於雲端跨連線併發證據。
 
-正式上線前待驗證：Supabase Auth 登入、Data API grants、兩位管理員實際權限、GitHub Pages 跨裝置連線、正式資料備份與復原安排。免費服務額度與暫停政策依供應商當時規則；未啟用任何付費方案。公開登記沒有學籍驗證；同學號去重不代表身分已核驗。操作紀錄限幹部查看，請由社團決定適當的資料保留期間。
+正式 RPC 與匿名隔離已讀回確認；尚待兩位幹部真人 Supabase Auth／MFA、實機取還車及正式備份復原驗收。免費服務額度與暫停政策依供應商當時規則；未啟用任何付費方案。公開登記沒有學籍驗證；同學號去重不代表身分已核驗。操作紀錄限幹部查看，請由社團決定適當的資料保留期間。
 
 本機展示不等於正式社團驗收。Sites 沒有用於此專案的發布。
 
