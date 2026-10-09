@@ -40,7 +40,7 @@ try{
   summaryRequested.resolve();await summaryRelease.promise;
   await route.fulfill({json:{total:6,borrowed:0,available:6,waiting:0,contactUrl:''}});
  });
- await page.reload();await summaryRequested.promise;
+ await page.reload();await summaryRequested.promise;await page.locator('.lc-legacy summary').click();
  await page.locator('#lookup-token').fill(newToken);await page.locator('#lookup-form button').click();
  await page.locator('#personal-result').filter({hasText:'new'}).waitFor();
  assert.equal(await page.locator('#waiting').textContent(),'2');

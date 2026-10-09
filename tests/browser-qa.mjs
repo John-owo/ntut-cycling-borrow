@@ -20,26 +20,23 @@ const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL || 'mse
 const page=await browser.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const results=[];
 async function openLegacy(){const legacy=page.locator('.lc-legacy');if(await legacy.count()&&await legacy.getAttribute('open')===null)await legacy.locator('summary').click();}
-async function readTerms(){await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();assert.equal(await page.locator('#registration-fields').isVisible(),true);}
-async function register(id,name,purpose='group_ride'){await readTerms();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=purpose]').selectOption(purpose);await page.locator('[name=contact]').fill('synthetic-only');for(const [index,key]of ['inspectionAt','rentalAt','returnAt'].entries()){const input=new Date(Date.now()+(index+1)*3600000+8*3600000).toISOString().slice(0,16);await page.locator(`[name=${key}]`).fill(input);}await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'資料已保存'}).waitFor();assert.equal(await page.locator('#registration-fields').isVisible(),false);}
+// New waiting registrations are closed on the member page; existing queue entries are created through the API.
+async function register(id,name,purpose='group_ride'){const token=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');const at=i=>new Date(Date.now()+i*3600000).toISOString();const response=await page.request.post(base+'/api/register',{data:{studentId:id,name,contactType:'instagram',contact:'synthetic-only',purpose,token,inspectionAt:at(1),rentalAt:at(2),returnAt:at(3),rentalNote:'',returnNote:''}});assert.equal(response.status(),200,await response.text());return token;}
+async function lookupCode(token){await openLegacy();await page.locator('#lookup-token').fill(token);await page.locator('#lookup-form button').click();await page.locator('#lookup-message').filter({hasText:'已取得最新狀態'}).waitFor();}
 async function layout(label,width){await page.setViewportSize({width,height:900});await page.screenshot({path:join(output,label+'.png'),fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),label+' horizontal overflow');results.push(label+' no horizontal overflow');}
 try{
- await page.goto(base);await openLegacy();await page.locator('#total').filter({hasText:'6'}).waitFor();
- assert.equal(await page.locator('[name=contactType] option').evaluateAll(options=>options.map(option=>option.value).join(',')),'instagram,line');
- assert.equal(await page.locator('#terms-agree').isEnabled(),false);
- assert.equal(await page.locator('#registration-fields').isVisible(),false);
- assert.equal(await page.locator('#register-button').isEnabled(),false);results.push('Contact options and borrowing-rules gate passed');
- assert.equal(await page.locator('#register-button').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(36, 60, 138)');results.push('Portal accent matches canonical brand #243C8A');
- await register('QA001','測試社員甲');
- assert.match(await page.locator('#personal-result').textContent(),/測試社員甲/);
- const code=await page.locator('#recovery-code').textContent();assert.equal(code.length,64);
- await page.reload();await openLegacy();await page.locator('#personal-result').filter({hasText:'測試社員甲'}).waitFor();results.push('Registration and private token reload passed');
+ await page.goto(base);await page.locator('#lc-calendar-message').filter({hasText:'更新於'}).waitFor();
+ assert.equal(await page.locator('#register-form,#register-button,[name=contactType]').count(),0);assert.equal(await page.locator('.lc-legacy').getAttribute('open'),null);results.push('Member page has no new waiting-registration form; the legacy lookup is collapsed');
+ assert.equal(await page.locator('#lookup-form button').evaluate(el=>getComputedStyle(el).borderColor),'rgb(183, 195, 221)');assert.equal(await page.locator('#lc-reserve-form button[type=submit]').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(36, 60, 138)');results.push('Portal accent matches canonical brand #243C8A');
+ const code=await register('QA001','測試社員甲');
+ await lookupCode(code);await page.locator('#personal-result').filter({hasText:'測試社員甲'}).waitFor();await page.locator('#waiting').filter({hasText:'1'}).waitFor();
+ await page.reload();assert.notEqual(await page.locator('.lc-legacy').getAttribute('open'),null,'a saved queue code opens the lookup');await page.locator('#personal-result').filter({hasText:'測試社員甲'}).waitFor();results.push('Existing queue entry lookup and private token reload passed');
  // Old polling response arriving after a new registration must not overwrite the new member.
  let release;let started;const gate=new Promise(r=>release=r),seen=new Promise(r=>started=r);
  await page.route('**/api/me',async route=>{const response=await route.fetch();started();await gate;await route.fulfill({response});});
  await page.locator('#refresh').click();await seen;
- await register('QA002','測試社員乙','personal_ride');release();await page.unrouteAll({behavior:'wait'});
- await page.waitForTimeout(150);assert.match(await page.locator('#personal-result').textContent(),/測試社員乙/);results.push('Delayed old lookup cannot replace new registration');
+ const second=await register('QA002','測試社員乙','personal_ride');await page.unrouteAll({behavior:'ignoreErrors'});await page.locator('#lookup-token').fill(second);await page.locator('#lookup-form button').click();release();
+ await page.locator('#personal-result').filter({hasText:'測試社員乙'}).waitFor();await page.waitForTimeout(150);assert.match(await page.locator('#personal-result').textContent(),/測試社員乙/);results.push('Delayed old lookup cannot replace a newer manual lookup');
  await layout('member-zh-mobile',390);await layout('member-zh-desktop',1280);
  await page.locator('[data-language=en]').click();await layout('member-en-mobile',390);
  await layout('member-en-desktop',1280);
@@ -64,7 +61,7 @@ try{
  releaseLogout();releaseExport();await page.unrouteAll({behavior:'wait'});await page.waitForTimeout(100);assert.equal(downloads,0);results.push('Logout immediately removes credentials and personal records before remote response; delayed export cannot download PII');
  assert.equal(await page.locator('a[href*="club.html"],.portal-nav').count(),0);
  for(const path of ['/club.css','/club-assets/image1.jpeg','/club-assets/image6.jpeg'])assert.equal((await page.request.get(base+path)).status(),404,path);
- await page.goto(base+'/club.html');await page.waitForURL(base+'/index.html');await openLegacy();await page.locator('#register-form').waitFor();
+ await page.goto(base+'/club.html');await page.waitForURL(base+'/index.html');await openLegacy();await page.locator('#lookup-form').waitFor();
  assert.equal(await page.locator('a[href*="club.html"],.portal-nav').count(),0);
  for(const href of await page.locator('a[href^="#"]').evaluateAll(links=>links.map(a=>a.getAttribute('href'))))assert.equal(await page.locator(href).count(),1,href);
  await layout('member-small-mobile',320);
