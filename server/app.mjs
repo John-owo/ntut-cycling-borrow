@@ -90,7 +90,7 @@ export function createApp({ dbPath = resolve('data/bikes.sqlite'), origins = [],
       let actor;
       if(path.startsWith('/api/admin/')&&path!=='/api/admin/login'){const auth=req.headers.authorization||'';if(!/^Bearer [a-f0-9]{64}$/.test(auth))fail(401,'請先登入');const session=db.prepare('SELECT username FROM sessions WHERE tokenHash=? AND expires>?').get(hash(auth.slice(7)),now);if(!session)fail(401,'登入已失效，請重新登入');actor=session.username;}
       let result;
-      if(req.method==='POST'&&(path==='/api/lifecycle'||path==='/api/admin/lifecycle')){exact(body,path==='/api/lifecycle'?['action','token','payload']:['action','payload']);result=lifecycle.handle(body.action,body.token,body.payload??{},path==='/api/admin/lifecycle'?actor:null);send(200,result);return;}
+      if(req.method==='POST'&&(path==='/api/lifecycle'||path==='/api/admin/lifecycle')){exact(body,path==='/api/lifecycle'?['action','token','payload']:['action','payload']);if(path==='/api/lifecycle'&&body.action==='apply')throttleRegister(hash(req.socket.remoteAddress||'unknown'));result=lifecycle.handle(body.action,body.token,body.payload??{},path==='/api/admin/lifecycle'?actor:null);send(200,result);return;}
       if(req.method==='POST'&&path==='/api/admin/borrowed') {
         exact(body,['borrowed','expectedBorrowed','expectedOpening','requestId','reason']);
         if([body.borrowed,body.expectedBorrowed,body.expectedOpening].some(v=>!Number.isSafeInteger(v)||v<0||v>10000)||typeof body.requestId!=='string'||! /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(body.requestId))fail(400,'已借出數量或操作識別碼格式不正確');

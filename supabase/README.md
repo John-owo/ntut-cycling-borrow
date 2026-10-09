@@ -4,6 +4,10 @@
 
 新流程原圖總預算為 192 MiB，保留有效借用尚未完成的必要取還車照片額度；幹部 `list.storage` 可查看已用、預留與上限。這不是整個託管資料庫的容量保證，長期使用仍需監控並規劃私有物件儲存、備份及保留政策。
 
+## 012：自助預約與幹部同意（2026-10-09）
+
+在 001–011 之後執行一次 `migrations/012_self_service_booking.sql`，再發布新版前端（舊前端在 012 後仍可運作）。內容：`lifecycle_reservations` 新增 `access_hash`（唯一、可為空）、`approval`（既有紀錄預設 `approved`）與 `approved_at`；`lifecycle_requests.actor_type` 增加 `applicant`；新增 `private.lifecycle_apply_core`，並以 `create or replace` 更新 `lifecycle_reservation_json`、`lifecycle_member_core`、`lifecycle_admin_core`、`lifecycle_public_rpc`（公開入口與權限不變）。匿名 `apply` 使用 006 的登記額度；幹部新增 `approve` 與 `access`。開頭檢查 `access_hash` 欄位已存在即中止，整份在單一交易內，失敗不會留下部分變更。`tests/self-service-postgres.test.mjs` 以 PGlite 套用 001–012 驗證；這不代表 Supabase 託管環境的多連線實測。
+
 ## 009：編號車線上預約與借還車紀錄
 
 在 001–008 已套用後，依序執行 `migrations/009_reservation_lifecycle.sql`；既有佇列、期初借出數與幹部帳號不會被搬移或改寫。新車與配件必須由幹部先實體盤點，再逐一建立編號及啟用。正式站仍需依專案的完整發佈流程同步前端與舊新庫存相容 migration；勿單獨發佈新表單。
