@@ -1,0 +1,273 @@
+{
+  "catalogDate": "2026-10-08",
+  "processedDate": "2026-10-09",
+  "source": "User-provided Google Drive bike folders; exact original JPEG bytes retained",
+  "assets": [
+    {
+      "code": "1",
+      "name": "亞士曼",
+      "folderUrl": "https://drive.google.com/drive/folders/1uhpq2yul3Sa01digK_9PFGelZ90nWnDC",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "11lJ9Xbdh0kEGsm4azTNGAbtXzwVl6MEP",
+          "originalName": "S__5193736_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-01-S__5193736_0-20261009.jpg",
+          "sizeBytes": 4258708,
+          "sha256": "f38bf9b9a09f1e027d223443f3da84a473caac80ae1df358a7c18fc4c7e4fe6b",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-01-S__5193736_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "1QxqwcEBO1p9LqhAG2nppdt9I5umk8lb4",
+          "originalName": "S__5193737_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-01-S__5193737_0-20261009.jpg",
+          "sizeBytes": 4115816,
+          "sha256": "4633ebf7d5a50441a758706131f60cb03a1ee9b4e5f680608661be919b33f30b",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "2",
+      "name": "普利碼",
+      "folderUrl": "https://drive.google.com/drive/folders/1Yzy5QpJqqusPBz-zpfrCo8S51zlb-zj1",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "1IwLgveWYLe2O_cMRJpfM5Q2Lf4j5AOvE",
+          "originalName": "S__5193740_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-02-S__5193740_0-20261009.jpg",
+          "sizeBytes": 5290112,
+          "sha256": "ee65039746467584d575a4ddda456aaf564a0508447d4035fe38d668d0134580",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-02-S__5193740_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "16QOX7rlxfD2tTGcrpVUdAeYoGzwLk0zd",
+          "originalName": "S__5193741_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-02-S__5193741_0-20261009-retry1.jpg",
+          "sizeBytes": 3402470,
+          "sha256": "5d4e2c830eccf2f09f90aeb10e351ca2adc961db95c98d34f6a5dbc2d19f0147",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "3",
+      "name": "defy",
+      "folderUrl": "https://drive.google.com/drive/folders/1Wt7LPnD7ALhSi8lEv7gTKouBrVkrX2h4",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "1_dXG2kIM7zqliwuPJCVqq9WLckB4c9-Z",
+          "originalName": "S__5193744_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-03-S__5193744_0-20261009.jpg",
+          "sizeBytes": 443443,
+          "sha256": "34e676ce72d60e59a601bc553d2a5ed69772eed6be487dc58a26bd9344472c8c",
+          "width": 1108,
+          "height": 1477,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-03-S__5193744_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "11zwwxMbKZyp3GLgyWshOym4zBoYk44bV",
+          "originalName": "S__5193745_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-03-S__5193745_0-20261009.jpg",
+          "sizeBytes": 3506672,
+          "sha256": "c67ddf9604e2e8c622fab3ffa0eb7a61d1447f04d1323d508fa5e4f20003ac21",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "4",
+      "name": "scr",
+      "folderUrl": "https://drive.google.com/drive/folders/10dX6NHX8Qkpd20etzxWKOxLf4UiaDANX",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "1sG7A0-Npl6vdMLtA41wDxSMJq1KQqpIv",
+          "originalName": "S__5193748_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-04-S__5193748_0-20261009.jpg",
+          "sizeBytes": 422843,
+          "sha256": "f4b6af87e99bb603e56c92e877dd86a36335698e800dac2f1698da070d1e2b95",
+          "width": 1108,
+          "height": 1477,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-04-S__5193748_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "1TidKWqCg9b15umm1U9v2LGvruMuoR7pH",
+          "originalName": "S__5193749_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-04-S__5193749_0-20261009.jpg",
+          "sizeBytes": 4431947,
+          "sha256": "0025af60aec459106ef9b6ca0bab8f584e98e095a8b1b48905c04c6a49dcc0b9",
+          "width": 5712,
+          "height": 4284,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "5",
+      "name": "KHS",
+      "folderUrl": "https://drive.google.com/drive/folders/1clBCOJ64Bvc6TOc0EVyIJnUzbUn8ml0Z",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "1A11HjuBouZkPjJuGO52JmQktrr3BlkgU",
+          "originalName": "S__5193752_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-05-S__5193752_0-20261009.jpg",
+          "sizeBytes": 5148533,
+          "sha256": "f103d9b1bbd0006e5acc09bf3e779689ac42b45622ac5dceb170edd6c72ce189",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-05-S__5193752_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "12AYbxZsU0ceBhTvYHZ2Rl2Rbwa_ZzKU6",
+          "originalName": "S__5193753_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-05-S__5193753_0-20261009.jpg",
+          "sizeBytes": 3417649,
+          "sha256": "8d34289ebc7f0a5bb5ae0b868631a105326464248c75dfc50d35eadb1053bc35",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "6",
+      "name": "TCR",
+      "folderUrl": "https://drive.google.com/drive/folders/1H_89ckIjnJqmnWrwN56hv664sYjRLQ5w",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "16UFrlz91wh75S8v-huJ9lfJ82Ybr1Hm-",
+          "originalName": "S__5193756_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-06-S__5193756_0-20261009.jpg",
+          "sizeBytes": 4648242,
+          "sha256": "93b65291220f60056eb738fa1da5adeb3508819c345abdb89a2f2193fac7629e",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-06-S__5193756_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "16D-bGm8VjxbBp79e1udwwQPiSqBpKut5",
+          "originalName": "S__5193757_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-06-S__5193757_0-20261009.jpg",
+          "sizeBytes": 473623,
+          "sha256": "4d4e20f96099dac3ce3852537465d9b5d7a50463865ab1e80c12f5c29a39167a",
+          "width": 1108,
+          "height": 1477,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "7",
+      "name": "HASA",
+      "folderUrl": "https://drive.google.com/drive/folders/1q5aYT58-YU9454fCdZ7y4s2yGvWz_9Qa",
+      "pendingPhoto": false,
+      "photos": [
+        {
+          "driveFileId": "1OHDlXLmJ5NgJYU2gT8bQerEvHRttCu8q",
+          "originalName": "S__5193760_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-07-S__5193760_0-20261009.jpg",
+          "sizeBytes": 5153747,
+          "sha256": "c6fb1fe2e9d1c8662edb6f574de7de390d307250d72f5e2be135c0add69c5fe9",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": "public/fleet-reference-20261008/bike-07-S__5193760_0-20261009.jpg"
+        },
+        {
+          "driveFileId": "1xsgTpJNpT_DMF73NtNQj-WBB3zpUlR6a",
+          "originalName": "S__5193761_0.jpg",
+          "rawPath": "work/fleet-originals-20261008/bike-07-S__5193761_0-20261009.jpg",
+          "sizeBytes": 3806114,
+          "sha256": "bf55009f0a3e0bd3b09075ebd70790c7536d90be3fd0a9872b4aa3ad2219d699",
+          "width": 4284,
+          "height": 5712,
+          "hasGpsExif": false,
+          "hasPrivateExif": false,
+          "hasXmp": false,
+          "visualReview": "No identifiable face or personal information seen",
+          "publicPath": null
+        }
+      ]
+    },
+    {
+      "code": "8",
+      "name": "平把登山車",
+      "folderUrl": null,
+      "pendingPhoto": true,
+      "photos": []
+    }
+  ],
+  "downloadIncident": {
+    "fileId": "16QOX7rlxfD2tTGcrpVUdAeYoGzwLk0zd",
+    "incompletePath": "work/fleet-originals-20261008/bike-02-S__5193741_0-20261009.jpg",
+    "incompleteSizeBytes": 1048576,
+    "completeRetryPath": "work/fleet-originals-20261008/bike-02-S__5193741_0-20261009-retry1.jpg"
+  },
+  "policy": "Only visually reviewed full-bike photos copied byte-for-byte to public; all seeded assets remain inspection."
+}

@@ -1,5 +1,5 @@
 import {confirmLocalized} from './i18n.js?v=appointments0929';
-import {api,safeContact,node,date,appointmentDetails} from './api.js?v=appointments0929';
+import {api,safeContact,node,date,appointmentDetails} from './api.js?v=lifecycle1008';
 const $=id=>document.getElementById(id);
 let savedToken='',pendingToken='',summary=null,lastSuccess=0,busy=false,refreshing=false,lookupSequence=0,manualLookup=0;
 let registrationReady=false,termsRead=false;

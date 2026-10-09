@@ -23,7 +23,7 @@ try{
    await page.setViewportSize({width,height:900});
    await page.screenshot({path:join(output,`officer-${language}-${width}.png`),fullPage:true});
    assert.equal(await page.locator('.record h3').textContent(),`${name} · ${studentId}`,'preserve complete member identifiers');
-   assert.equal(await page.locator('.record .user-content').textContent(),contact,'preserve complete contact');
+   assert.equal(await page.locator('.record span.user-content').textContent(),contact,'preserve complete contact');
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${language} at ${width}px must not scroll horizontally`);
    for(const selector of ['#identity','#export','#logout','.record h3','.record-side','.record-actions']){
     assert.ok(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),`${selector} stays reachable at ${language}/${width}`);
