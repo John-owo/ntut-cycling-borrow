@@ -19,12 +19,13 @@ const base=`http://127.0.0.1:${app.server.address().port}`;
 const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL || 'msedge',headless:true});
 const page=await browser.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const results=[];
+async function openLegacy(){const legacy=page.locator('.lc-legacy');if(await legacy.count()&&await legacy.getAttribute('open')===null)await legacy.locator('summary').click();}
 async function readTerms(){await page.locator('#borrow-terms-text').evaluate(el=>{el.scrollTop=el.scrollHeight;});await page.locator('#terms-agree:enabled').waitFor();await page.locator('#terms-agree').check();assert.equal(await page.locator('#registration-fields').isVisible(),true);}
-async function register(id,name,purpose='group_ride'){await readTerms();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=purpose]').selectOption(purpose);await page.locator('[name=contact]').fill('synthetic-only');await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'登記已保存'}).waitFor();assert.equal(await page.locator('#registration-fields').isVisible(),false);}
+async function register(id,name,purpose='group_ride'){await readTerms();await page.locator('[name=studentId]').fill(id);await page.locator('[name=name]').fill(name);await page.locator('[name=purpose]').selectOption(purpose);await page.locator('[name=contact]').fill('synthetic-only');for(const [index,key]of ['inspectionAt','rentalAt','returnAt'].entries()){const input=new Date(Date.now()+(index+1)*3600000+8*3600000).toISOString().slice(0,16);await page.locator(`[name=${key}]`).fill(input);}await page.locator('#register-button').click();await page.locator('#register-message').filter({hasText:'資料已保存'}).waitFor();assert.equal(await page.locator('#registration-fields').isVisible(),false);}
 async function layout(label,width){await page.setViewportSize({width,height:900});await page.screenshot({path:join(output,label+'.png'),fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),label+' horizontal overflow');results.push(label+' no horizontal overflow');}
 try{
- await page.goto(base);await page.locator('#total').filter({hasText:'6'}).waitFor();
- assert.equal(await page.locator('[name=contactType] option').evaluateAll(options=>options.map(option=>option.value).join(',')),'line,instagram');
+ await page.goto(base);await openLegacy();await page.locator('#total').filter({hasText:'6'}).waitFor();
+ assert.equal(await page.locator('[name=contactType] option').evaluateAll(options=>options.map(option=>option.value).join(',')),'instagram,line');
  assert.equal(await page.locator('#terms-agree').isEnabled(),false);
  assert.equal(await page.locator('#registration-fields').isVisible(),false);
  assert.equal(await page.locator('#register-button').isEnabled(),false);results.push('Contact options and borrowing-rules gate passed');
@@ -32,7 +33,7 @@ try{
  await register('QA001','測試社員甲');
  assert.match(await page.locator('#personal-result').textContent(),/測試社員甲/);
  const code=await page.locator('#recovery-code').textContent();assert.equal(code.length,64);
- await page.reload();await page.locator('#personal-result').filter({hasText:'測試社員甲'}).waitFor();results.push('Registration and private token reload passed');
+ await page.reload();await openLegacy();await page.locator('#personal-result').filter({hasText:'測試社員甲'}).waitFor();results.push('Registration and private token reload passed');
  // Old polling response arriving after a new registration must not overwrite the new member.
  let release;let started;const gate=new Promise(r=>release=r),seen=new Promise(r=>started=r);
  await page.route('**/api/me',async route=>{const response=await route.fetch();started();await gate;await route.fulfill({response});});
@@ -45,6 +46,7 @@ try{
  await page.locator('[data-language=zh]').click();
  await page.goto(base+'/admin.html');await page.locator('[name=username]').fill('qa-admin');await page.locator('[name=password]').fill('qa-only-password-123');await page.locator('#login-form button').click();await page.locator('#workspace:not([hidden])').waitFor();
  assert.match(await page.locator('#records').textContent(),/借車目的：自己私底下騎/);
+ await page.locator('.record').first().getByRole('button',{name:'確認聯絡與時間',exact:true}).click();await page.locator('#dialog-confirm').click();await page.locator('#action-dialog').waitFor({state:'hidden'});
  await page.locator('.record').first().getByRole('button',{name:'確認借出',exact:true}).click();await page.locator('#dialog-confirm').click();await page.locator('#action-dialog').waitFor({state:'hidden'});
  await page.locator('[data-filter=borrowed]').click();await page.locator('.record').getByRole('button',{name:'確認歸還',exact:true}).click();await page.locator('#dialog-confirm').click();await page.locator('#action-dialog').waitFor({state:'hidden'});
  await page.locator('[data-filter=history]').click();await page.locator('.record').filter({hasText:'已歸還'}).waitFor();results.push('Officer login, actual lend/return transitions, history passed in synthetic SQLite');
@@ -62,7 +64,7 @@ try{
  releaseLogout();releaseExport();await page.unrouteAll({behavior:'wait'});await page.waitForTimeout(100);assert.equal(downloads,0);results.push('Logout immediately removes credentials and personal records before remote response; delayed export cannot download PII');
  assert.equal(await page.locator('a[href*="club.html"],.portal-nav').count(),0);
  for(const path of ['/club.css','/club-assets/image1.jpeg','/club-assets/image6.jpeg'])assert.equal((await page.request.get(base+path)).status(),404,path);
- await page.goto(base+'/club.html');await page.waitForURL(base+'/index.html');await page.locator('#register-form').waitFor();
+ await page.goto(base+'/club.html');await page.waitForURL(base+'/index.html');await openLegacy();await page.locator('#register-form').waitFor();
  assert.equal(await page.locator('a[href*="club.html"],.portal-nav').count(),0);
  for(const href of await page.locator('a[href^="#"]').evaluateAll(links=>links.map(a=>a.getAttribute('href'))))assert.equal(await page.locator(href).count(),1,href);
  await layout('member-small-mobile',320);

@@ -30,6 +30,20 @@ async function client(t,initial=null) {
 const authResult=(token='test-user-jwt',refresh='test-refresh')=>({user:{email:'president@example.test'},access_token:token,refresh_token:refresh,expires_in:3600});
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 
+test('Lifecycle member RPC carries only the private member token and exact payload',async t=>{
+ const c=await client(t), payload={requestId:'test-request',assetIds:['bike'],start:'2026-10-09T01:00:00Z',end:'2026-10-09T02:00:00Z'};
+ c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'reserve',p_token:'a'.repeat(64),p_payload:payload},result:{reservation:{id:'receipt'}}});
+ assert.equal((await c.api.lifecycle('reserve',payload,'a'.repeat(64))).reservation.id,'receipt');c.done();
+});
+
+test('Lifecycle staff RPC requires a live in-memory login and shares rotating refresh',async t=>{
+ const c=await client(t,{username:'president@example.test',token:'expired',refreshToken:'rotate-once',expires:0});
+ c.expect({path:'/auth/v1/token?grant_type=refresh_token',body:{refresh_token:'rotate-once'},result:authResult('rotated')});
+ c.expect({path:'/rest/v1/rpc/lifecycle_admin',body:{p_action:'list',p_payload:{}},token:'rotated',result:{reservations:[]}});
+ assert.deepEqual((await c.api.lifecycle('list',{},null,true)).reservations,[]);
+ c.api.clearAdmin();await assert.rejects(c.api.lifecycle('list',{},null,true),e=>e.status===401);c.done();
+});
+
 test('Concurrent officer requests share one rotating refresh token redemption',async t=>{
  const c=await client(t,{username:'president@example.test',token:'expired',refreshToken:'rotate-once',expires:0});
  const gate=deferred();

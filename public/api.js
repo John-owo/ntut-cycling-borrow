@@ -9,9 +9,10 @@ export const currentAdmin = () => session?.username || null;
 export const clearAdmin = () => { authGeneration++; refreshTask = null; mfaState=null; remember(null); };
 const signedOutError = () => Object.assign(new Error('請先登入。'), {status:401});
 async function request(url, options = {}) {
-  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000);
+  const {timeoutMs=12000,...fetchOptions}=options;
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { cache:'no-store', ...options, signal:controller.signal });
+    const response = await fetch(url, { cache:'no-store', ...fetchOptions, signal:controller.signal });
     if(response.status===204) return null;
     const data = await response.json();
     if (!response.ok) { const error = new Error(data.error_description || data.message || data.msg || data.error || '操作失敗，請稍後再試。'); error.status=response.status; error.code=data.error_code||data.code; throw error; }
@@ -51,6 +52,15 @@ export async function api(path, body, admin=false) {
   }
   if(location.hostname.endsWith('github.io')&&!cfg.apiBase) throw new Error('共用資料服務尚未連接，目前不能登記。');
   return request((cfg.apiBase||'')+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${await adminToken()}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+}
+// All lifecycle authority remains in the server/database; client checks only aid input.
+export async function lifecycle(action, payload = {}, token = null, admin = false) {
+  if(admin && mfaState?.required) throw Object.assign(new Error('MFA_REQUIRED'), {status:403});
+  if(cloud) return request(`${cfg.supabaseUrl}/rest/v1/rpc/${admin?'lifecycle_admin':'lifecycle'}`, {
+    method:'POST', timeoutMs:60000, headers:cloudHeaders(admin?await adminToken():undefined),
+    body:JSON.stringify(admin?{p_action:action,p_payload:payload}:{p_action:action,p_token:token,p_payload:payload}),
+  });
+  return api(admin?'/api/admin/lifecycle':'/api/lifecycle', admin?{action,payload}:{action,token,payload}, admin);
 }
 export async function login(username,password) {
   clearAdmin(); const generation=authGeneration;

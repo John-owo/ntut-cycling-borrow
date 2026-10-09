@@ -10,7 +10,8 @@ import {packagePages,borrowingFiles} from '../scripts/package-pages.mjs';
 test('Pages artifact contains only borrowing assets and preserves existing output',()=>{
  const output=join(mkdtempSync(join(tmpdir(),'bike-pages-')),'site');
  packagePages(output);
- assert.deepEqual(readdirSync(output).sort(),[...borrowingFiles].sort());
+ const files=readdirSync(output,{recursive:true,withFileTypes:true}).filter(item=>item.isFile()).map(item=>join(item.parentPath,item.name).slice(output.length+1).replaceAll('\\','/'));
+ assert.deepEqual(files.sort(),[...borrowingFiles].sort());
  for(const name of ['club.css','club-assets'])assert.equal(existsSync(join(output,name)),false);
  for(const name of ['index.html','admin.html']){
   const html=readFileSync(join(output,name),'utf8');
