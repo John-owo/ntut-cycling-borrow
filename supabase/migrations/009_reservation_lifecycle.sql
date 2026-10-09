@@ -75,12 +75,22 @@ create table private.lifecycle_requests (
 );
 
 -- No direct Data API access, including to sequences and binaries.
-do $$ declare t text; begin
- foreach t in array array['lifecycle_settings','lifecycle_assets','lifecycle_members','lifecycle_reservations','lifecycle_reservation_assets','lifecycle_photos','lifecycle_inspections','lifecycle_signatures','lifecycle_events','lifecycle_notifications','lifecycle_requests'] loop
-  execute format('alter table private.%I enable row level security',t);
-  execute format('revoke all on table private.%I from public,anon,authenticated',t);
- end loop;
-end $$;
+alter table private.lifecycle_settings enable row level security;
+alter table private.lifecycle_assets enable row level security;
+alter table private.lifecycle_members enable row level security;
+alter table private.lifecycle_reservations enable row level security;
+alter table private.lifecycle_reservation_assets enable row level security;
+alter table private.lifecycle_photos enable row level security;
+alter table private.lifecycle_inspections enable row level security;
+alter table private.lifecycle_signatures enable row level security;
+alter table private.lifecycle_events enable row level security;
+alter table private.lifecycle_notifications enable row level security;
+alter table private.lifecycle_requests enable row level security;
+revoke all on table private.lifecycle_settings,private.lifecycle_assets,
+ private.lifecycle_members,private.lifecycle_reservations,private.lifecycle_reservation_assets,
+ private.lifecycle_photos,private.lifecycle_inspections,private.lifecycle_signatures,
+ private.lifecycle_events,private.lifecycle_notifications,private.lifecycle_requests
+ from public,anon,authenticated;
 
 create function private.lifecycle_immutable() returns trigger language plpgsql security definer set search_path='' as $$
 begin raise exception 'Original evidence is immutable'; end $$;

@@ -20,6 +20,7 @@ do $$ begin
  if to_regprocedure('public.lifecycle(text,text,jsonb)') is not null then raise exception 'Lifecycle is already installed; do not replay release'; end if;
 end $$;
 create temporary table lifecycle_release_baseline on commit drop as ${fingerprint};
+alter table lifecycle_release_baseline enable row level security;
 ${body}
 do $$ declare after_hash text; begin
  ${fingerprint} into after_hash;
