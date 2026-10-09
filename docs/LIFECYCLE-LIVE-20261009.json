@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-09",
+  "featurePr": "https://github.com/John-owo/ntut-cycling-borrow/pull/16",
+  "mergeCommit": "07dc0d0a02d1d613f4b386427130b52446acd730",
+  "deployment": {
+    "url": "https://github.com/John-owo/ntut-cycling-borrow/actions/runs/37886365951",
+    "validate": "success",
+    "deploy": "success"
+  },
+  "sql": {
+    "scope": "Live Supabase SQL editor read-only verification after installation",
+    "date": "2026-10-09",
+    "legacyCount": 16,
+    "configuredTotal": 7,
+    "pendingFleet": 8,
+    "lifecycleReservations": 0,
+    "lifecyclePhotos": 0,
+    "privateLifecycleTables": 11,
+    "allRlsEnabled": true,
+    "directTableAccessForAnonOrAuthenticated": 0,
+    "anonymousAdminFunctionAccess": false,
+    "authenticatedAdminRpcAccess": true,
+    "privateFunctionAccessForAnonOrAuthenticated": 0,
+    "note": "SQL editor appended a second bundle; the already-installed guard rejected replay. No further migration replay performed. Legacy fingerprint guard passed in the installed transaction; all protection and API state reconciled read-only."
+  },
+  "api": {
+    "at": "2026-10-09T04:57:45.614Z",
+    "scope": "read-only live production; no member/loan/photo writes",
+    "calendarStatus": 200,
+    "assets": [
+      {
+        "code": "1",
+        "name": "亞士曼",
+        "state": "inspection"
+      },
+      {
+        "code": "2",
+        "name": "普利碼",
+        "state": "inspection"
+      },
+      {
+        "code": "3",
+        "name": "defy",
+        "state": "inspection"
+      },
+      {
+        "code": "4",
+        "name": "scr",
+        "state": "inspection"
+      },
+      {
+        "code": "5",
+        "name": "KHS",
+        "state": "inspection"
+      },
+      {
+        "code": "6",
+        "name": "TCR",
+        "state": "inspection"
+      },
+      {
+        "code": "7",
+        "name": "HASA",
+        "state": "inspection"
+      },
+      {
+        "code": "8",
+        "name": "平把登山車",
+        "state": "inspection"
+      }
+    ],
+    "bookings": 0,
+    "policyConfigured": false,
+    "anonymousAdminStatus": 401,
+    "invalidMemberStatus": 400,
+    "privatePhotoTableStatus": 404
+  },
+  "pages": {
+    "at": "2026-10-09T05:00:51.306Z",
+    "scope": "Live GitHub Pages, public calendar only; no authentication or business writes",
+    "fleet": 8,
+    "loadedOriginalReferencePhotos": 7,
+    "disabledUntilOfficerConfiguration": true,
+    "legacyExpandable": true,
+    "mobileWidth": 360,
+    "desktopWidth": 1280,
+    "pageErrors": [],
+    "cspViolations": []
+  }
+}
