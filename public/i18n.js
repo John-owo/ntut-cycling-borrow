@@ -1,9 +1,9 @@
-import {english} from './translations.js?v=en1010';
+import {english} from './translations.js?v=day1011';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
 // Converts zh date, time and duration fragments produced by the booking page.
-const enDates=text=>text.replace(/(\d{1,2}\/\d{1,2})（週([一二三四五六日])）/g,(m,d,w)=>`${weekdays[w]} ${d}`).replace(/週([一二三四五六日])/g,(m,w)=>weekdays[w]).replace(/ 起，尚未歸還/g,' onward, not yet returned').replace(/不到 1 分鐘/g,'under 1 min').replace(/(\d+) 天/g,'$1 d').replace(/(\d+) 小時/g,'$1 h').replace(/(\d+) 分/g,'$1 min').replace(/；/g,'; ');
+const enDates=text=>text.replace(/(\d{1,2}\/\d{1,2})（週([一二三四五六日])）/g,(m,d,w)=>`${weekdays[w]} ${d}`).replace(/週([一二三四五六日])/g,(m,w)=>weekdays[w]).replace(/ 起，尚未歸還/g,' onward, not yet returned').replace(/ 整天/g,' all day').replace(/不到 1 分鐘/g,'under 1 min').replace(/(\d+) 天/g,'$1 d').replace(/(\d+) 小時/g,'$1 h').replace(/(\d+) 分/g,'$1 min').replace(/；/g,'; ');
 const enList=text=>text.split('、').map(item=>translate(item)).join(', ');
 const patterns=[
  [/^確認 (.+) 已主動聯絡，且雙方已確認上述預計時間？$/,m=>`Confirm that ${m[1]} has contacted the club and both parties agreed to the proposed times?`],
@@ -40,7 +40,7 @@ const patterns=[
  [/^([\s\S]*) 若剛才送出後斷線，請先用上方查詢碼查詢，避免重複登記。$/,m=>`${translate(m[1])} If you lost connection after submitting, check using the code above before registering again.`],
 
  // Numbered-bike booking: zh dates such as 10/11（週日） become Sun 10/11; durations and lists are converted.
- [/^(\d{1,2}\/\d{1,2}（週.）[\d:\/\s–→（）週一二三四五六日起，尚未歸還]*)$/,m=>enDates(m[1])],
+ [/^(\d{1,2}\/\d{1,2}（週.）[\d:\/\s–→（）週一二三四五六日起，尚未歸還整天]*)$/,m=>enDates(m[1])],
  [/^可借 (\d+)$/,m=>`${m[1]} free`],
  [/^([A-Za-z0-9-]+(?:、[A-Za-z0-9-]+)+)$/,m=>m[1].split('、').join(', ')],
  [/^(\d+) 台$/,m=>`${m[1]} ${m[1]==='1'?'bike':'bikes'}`],

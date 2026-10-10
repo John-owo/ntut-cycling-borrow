@@ -25,7 +25,10 @@ const monthDay=value=>new Date(value).toLocaleDateString('zh-TW',{month:'numeric
 const weekdayName=value=>new Date(value).toLocaleDateString('zh-TW',{weekday:'short',timeZone:'Asia/Taipei'});
 const clock=value=>new Date(value).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Taipei'});
 const when=value=>value?`${shortDate(value)} ${clock(value)}`:'—';
-const range=(a,b)=>taipeiDayKey(new Date(a))===taipeiDayKey(new Date(b))?`${when(a)}–${clock(b)}`:`${when(a)} → ${when(b)}`;
+const atMidnight=value=>+new Date(value)===+taipeiMidnight(new Date(value));
+// A deadline at midnight reads as 24:00 of the previous day.
+const whenEnd=value=>value&&atMidnight(value)?`${shortDate(new Date(+new Date(value)-1))} 24:00`:when(value);
+const range=(a,b)=>{if(atMidnight(a)&&atMidnight(b)&&new Date(b)>new Date(a)){const last=new Date(+new Date(b)-1);return taipeiDayKey(new Date(a))===taipeiDayKey(last)?`${shortDate(a)} 整天`:`${shortDate(a)} → ${shortDate(last)} 整天`;}return taipeiDayKey(new Date(a))===taipeiDayKey(new Date(b))?`${when(a)}–${clock(b)}`:`${when(a)} → ${whenEnd(b)}`;};
 const span=ms=>{const m=Math.max(0,Math.round(ms/60000)),d=Math.floor(m/1440),h=Math.floor(m%1440/60),n=m%60;return [d&&`${d} 天`,h&&`${h} 小時`,n&&`${n} 分`].filter(Boolean).join(' ')||'不到 1 分鐘';};
 const details=(label,value)=>{const line=make('p');line.append(make('strong',`${label}：`),make('span',value??'—'));return line;};
 const parsedChecks=value=>{try{return typeof value==='string'?JSON.parse(value):value||{};}catch{return {};}};
@@ -60,7 +63,9 @@ if(memberPage){
  const ready=()=>!!calendar?.settings?.termsVersion;
  const uploadKey=slot=>selectedReservation?`${selectedReservation.record.id}:${selectedReservation.phase}:${slot}`:slot;
  function fleet(){const assets=calendar.assets||[],numbered=new Map(assets.filter(a=>a.kind==='bike').map(a=>[a.code,a]));return [...confirmedFleet.map(ref=>({...numbered.get(ref.code),code:ref.code,name:ref.name,state:numbered.get(ref.code)?.state||'inspection',reference:ref})),...assets.filter(a=>a.kind==='bike'&&!confirmedFleet.some(ref=>ref.code===a.code))];}
- function dayState(a,d){if(!a.id)return {mark:'off',label:'待建檔'};if(a.state!=='available')return {mark:'off',label:stateNames[a.state]||a.state};const booked=bookingFor(a,d);if(booked.some(b=>b.status==='in_use'))return {mark:'busy',label:'使用中',booked};if(booked.length)return {mark:'partial',label:'部分時段已預約',booked};return {mark:'free',label:'可借用',booked};}
+ function dayState(a,d){if(!a.id)return {mark:'off',label:'待建檔'};if(a.state!=='available')return {mark:'off',label:stateNames[a.state]||a.state};const booked=bookingFor(a,d);if(booked.some(b=>b.status==='in_use'))return {mark:'busy',label:'使用中',booked};if(booked.length&&coversDay(booked,d))return {mark:'full',label:'整天已預約',booked};if(booked.length)return {mark:'partial',label:'部分時段已預約',booked};return {mark:'free',label:'可借用',booked};}
+ // True when the bookings leave no bookable time in the day (today counts only from now on).
+ function coversDay(booked,d){const dayStart=+taipeiMidnight(d),to=dayStart+dayMs;let at=Math.max(dayStart,Date.now());if(at>=to)return false;for(const b of [...booked].sort((x,y)=>new Date(x.start)-new Date(y.start))){if(+new Date(b.start)>at)return false;at=Math.max(at,+blockingEnd(b));if(at>=to)return true;}return false;}
  const bookable=(a,d)=>['free','partial'].includes(dayState(a,d).mark);
  function clearPrivate(){memberGeneration++;privacyGeneration++;pendingMutations.clear();me=null;keyOf.clear();selectedReservation=null;justReserved=null;cancelling=null;cancelReason='';retryFiles.clear();uploading.clear();for(const url of previews.values())URL.revokeObjectURL(url);previews.clear();$('lc-records').replaceChildren();$('lc-flow').hidden=true;$('lc-flow-form').reset();$('lc-photo-inputs').replaceChildren();$('lc-checks').replaceChildren();$('lc-missing').replaceChildren();for(const id of ['lc-flow-title','lc-flow-subtitle','lc-location','lc-terms','lc-policy-version','lc-flow-message','lc-member-message','lc-name-hint','lc-photo-state','lc-check-state','lc-sign-state'])$(id).textContent='';clearSignature();$('lc-comparison').replaceChildren();$('lc-comparison').hidden=true;closeLightbox();updateBooking();}
 
@@ -95,7 +100,7 @@ if(memberPage){
   const choose=button(a.id&&a.id===selectedBike?'已選這台車':'選這台車',()=>{selectedBike=a.id;renderCalendar();say('lc-reserve-message','');},a.id&&a.id===selectedBike?'lc-choose':'secondary lc-choose');choose.disabled=!a.id||!bookable(a,selectedDay);choose.setAttribute('aria-pressed',String(!!a.id&&a.id===selectedBike));body.append(choose);
   row.append(thumb,body);return row;
  }
- function pickDay(d){selectedDay=d;const previous=$('lc-start').value,length=taipeiDateTime($('lc-end').value)-taipeiDateTime(previous);setDefaultTime(timeEdited&&previous?previous.slice(11):null,Number.isFinite(length)&&length>0&&length<=maxSpan?length:null);renderCalendar();}
+ function pickDay(d){selectedDay=d;const previous=$('lc-start').value,length=taipeiDateTime($('lc-end').value)-taipeiDateTime(previous),days=wholeDays(chosenWindow());setDefaultTime(timeEdited&&previous?previous.slice(11):null,Number.isFinite(length)&&length>0&&length<=maxSpan?length:null);if(days)setWholeDays(days);renderCalendar();}
  function renderAccessories(){
   const box=$('lc-accessories'),accessories=(calendar.assets||[]).filter(a=>a.kind==='accessory'),previouslySelected=new Set([...box.querySelectorAll('input:checked')].map(input=>input.value)),w=chosenWindow();box.replaceChildren();if(!accessories.length)return;
   const set=make('fieldset');set.append(make('legend','加借配件（選填）'));
@@ -104,6 +109,11 @@ if(memberPage){
  }
  // Default to the selected day; keep the member's chosen clock time and length when switching days.
  function setDefaultTime(time=null,length=null){const day=taipeiDayKey(selectedDay),now=new Date(),soon=new Date(Math.ceil((+now+hourMs)/(30*60000))*30*60000);let start=`${day}T${time||'09:00'}`;if(taipeiDateTime(start)<=now)start=taipeiDayKey(soon)===day?localDateTime(soon):`${day}T${time||'09:00'}`;if(day===taipeiDayKey(now)&&!time){start=localDateTime(soon);if(taipeiDayKey(soon)!==day)selectedDay=taipeiMidnight(soon);}$('lc-start').value=start;$('lc-end').value=localDateTime(new Date(+taipeiDateTime(start)+(length||3*hourMs)));limitTimes();}
+ // Day-length presets book whole calendar days (00:00 to 00:00) so the calendar shows them as booked all day.
+ // Today cannot start at 00:00, so it starts at the chosen (or next free) time and still ends at midnight.
+ function setWholeDays(days){const now=new Date(),current=taipeiDateTime($('lc-start').value),midnight=taipeiMidnight(Number.isFinite(+current)?current:selectedDay),soon=new Date(Math.ceil((+now+hourMs)/(30*60000))*30*60000);let start=midnight;if(+start<=+now)start=Number.isFinite(+current)&&+current>+now?current:soon;$('lc-start').value=localDateTime(start);$('lc-end').value=localDateTime(new Date(+taipeiMidnight(start)+days*dayMs));timeEdited=false;limitTimes();renderAccessories();updateBooking();}
+ // Number of whole calendar days when the window ends at midnight, otherwise 0.
+ const wholeDays=w=>w&&+w.end===+taipeiMidnight(w.end)?Math.round((+w.end-+taipeiMidnight(w.start))/dayMs):0;
  function limitTimes(){const now=localDateTime(new Date()),start=$('lc-start').value;$('lc-start').min=now;if(start){$('lc-end').min=start;$('lc-end').max=localDateTime(new Date(+taipeiDateTime(start)+maxSpan));}}
  function chosenWindow(){const start=taipeiDateTime($('lc-start').value),end=taipeiDateTime($('lc-end').value);return Number.isFinite(+start)&&Number.isFinite(+end)?{start,end}:null;}
  const chosenAssets=()=>[selectedBike,...[...$('lc-accessories').querySelectorAll('input:checked')].map(i=>i.value)].filter(Boolean);
@@ -114,9 +124,9 @@ if(memberPage){
   const w=chosenWindow(),bike=assetById(selectedBike),box=$('lc-booking-check'),issues=bookingIssues(),extras=chosenAssets().slice(1).map(id=>assetById(id)?.code).filter(Boolean);
   const selected=$('lc-selected');selected.replaceChildren();if(bike){selected.append(make('span','已選'),make('strong',`${bike.code} · ${bike.name}`));selected.append(button('換一台',()=>scrollTo($('lc-calendar-panel')),'text-button'));}else selected.append(make('span','請先在日曆選一台車。'));
   $('lc-duration').textContent=w&&w.end>w.start?`共 ${span(w.end-w.start)}${w.end-w.start>maxSpan?'（超過五天上限）':''}`:'';
-  for(const b of document.querySelectorAll('.lc-durations button'))b.setAttribute('aria-pressed',String(!!w&&+w.end-+w.start===Number(b.dataset.hours)*hourMs));
+  for(const b of document.querySelectorAll('.lc-durations button')){const hours=Number(b.dataset.hours);b.setAttribute('aria-pressed',String(!!w&&(hours%24===0?wholeDays(w)===hours/24:+w.end-+w.start===hours*hourMs)));}
   box.replaceChildren();
-  if(bike&&w&&w.end>w.start){const list=make('div',undefined,'lc-summary');for(const [k,v] of [['車輛',`${bike.code} · ${bike.name}`],['配件',extras.join('、')||'無'],['借用',when(w.start)],['歸還',when(w.end)]]){list.append(make('span',k,'lc-summary-key'),make('span',v,'lc-summary-value'));}box.append(list);}
+  if(bike&&w&&w.end>w.start){const list=make('div',undefined,'lc-summary');for(const [k,v] of [['車輛',`${bike.code} · ${bike.name}`],['配件',extras.join('、')||'無'],['借用',when(w.start)],['歸還',whenEnd(w.end)]]){list.append(make('span',k,'lc-summary-key'),make('span',v,'lc-summary-value'));}box.append(list);}
   const active=(me?.reservations||[]).find(r=>['reserved','in_use','inspection'].includes(r.status));
   if(issues.length){const ul=make('ul',undefined,'lc-issues');for(const text of issues)ul.append(make('li',text));box.append(ul);}
   else if(active)box.append(make('p','這支手機已有進行中的預約或借用；同一學號一次只能有一筆。','lc-hint'));
@@ -236,7 +246,7 @@ if(memberPage){
  $('lc-reserve-form').addEventListener('submit',async e=>{e.preventDefault();const issues=bookingIssues();if(issues.length){say('lc-reserve-message',issues[0],true);return;}const w=chosenWindow(),assetIds=chosenAssets(),studentId=$('lc-student').value.trim().toUpperCase(),name=$('lc-name').value.trim();const draft=JSON.stringify({assetIds,start:w.start.toISOString(),end:w.end.toISOString(),studentId,name});if(applyDraft?.draft!==draft)applyDraft={draft,key:newKey()};const key=applyDraft.key;saveKeys([...savedKeys(),key]);try{localStorage.setItem('lc-borrower',JSON.stringify({studentId,name}));}catch{}
   const submit=e.currentTarget.querySelector('button[type=submit]'),generation=privacyGeneration,restore=busy(submit,'送出中…');say('lc-reserve-message','正在向系統確認時段…');try{const result=await mutate('apply',{studentId,name,assetIds,start:w.start.toISOString(),end:w.end.toISOString(),key},'apply');applyDraft=null;justReserved=result?.reservation?.id||null;await Promise.all([loadCalendar(true),loadMe(true)]);if(generation===privacyGeneration){say('lc-reserve-message','預約已送出，等待幹部同意。請現在私訊社團 Instagram 告知借車。','ok');say('lc-member-message','預約已送出。請私訊社團 Instagram，幹部同意後就能在取車時間自行取車。','ok');selectedBike=null;$('lc-ig-ack').checked=false;renderCalendar();scrollTo($('lc-member'));}}catch(err){if(err.status){saveKeys(savedKeys().filter(k=>k!==key));applyDraft=null;}if(err.code!=='TOKEN_CHANGED'&&generation===privacyGeneration)say('lc-reserve-message',`預約失敗：${err.message}`,true);await loadCalendar(true);}finally{restore();updateBooking();}});
  $('lc-start').addEventListener('input',()=>{timeEdited=true;});for(const id of ['lc-start','lc-end'])$(id).addEventListener('input',()=>{limitTimes();renderAccessories();updateBooking();});
- for(const b of document.querySelectorAll('.lc-durations button'))b.addEventListener('click',()=>{const start=taipeiDateTime($('lc-start').value);if(!Number.isFinite(+start))return;$('lc-end').value=localDateTime(new Date(+start+Number(b.dataset.hours)*hourMs));limitTimes();renderAccessories();updateBooking();});
+ for(const b of document.querySelectorAll('.lc-durations button'))b.addEventListener('click',()=>{const hours=Number(b.dataset.hours);if(hours%24===0){setWholeDays(hours/24);return;}const start=taipeiDateTime($('lc-start').value);if(!Number.isFinite(+start))return;$('lc-end').value=localDateTime(new Date(+start+hours*hourMs));limitTimes();renderAccessories();updateBooking();});
  $('lc-prev-week').addEventListener('click',()=>{weekOffset=Math.max(0,weekOffset-1);selectedDay=weekStart();setDefaultTime();loadCalendar(true);});$('lc-next-week').addEventListener('click',()=>{weekOffset=Math.min(5,weekOffset+1);selectedDay=weekStart();setDefaultTime();loadCalendar(true);});$('lc-refresh').addEventListener('click',()=>loadCalendar(true));
  normalizeToken();setDefaultTime();if(+selectedDay>=+weekStart()+7*dayMs)weekOffset=1;renderCalendar();loadCalendar(true);loadMe(true);document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCalendar();});setInterval(()=>{if(!document.hidden)loadCalendar();},30000);
 }
