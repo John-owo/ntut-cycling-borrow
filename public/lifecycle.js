@@ -243,6 +243,16 @@ if(memberPage){
  // Remember the borrower's own student ID and name on this device for the next booking.
  try{const saved=JSON.parse(localStorage.getItem('lc-borrower')||'{}');if(saved.studentId)$('lc-student').value=saved.studentId;if(saved.name)$('lc-name').value=saved.name;}catch{}
  for(const id of ['lc-student','lc-name','lc-ig-ack'])$(id).addEventListener('input',updateBooking);
+ // One-time notice about the calendar booking flow. Showing it marks it seen; change noticeKey to show it again after a big change.
+ {const notice=$('lc-notice'),noticeKey='lc-notice-booking-1011';
+  if(notice&&typeof notice.showModal==='function'){
+   const seen=()=>{try{return localStorage.getItem(noticeKey)==='1';}catch{return false;}};
+   const close=()=>{if(notice.open)notice.close();};
+   $('lc-notice-close').addEventListener('click',close);
+   $('lc-notice-start').addEventListener('click',()=>{close();$('lc-calendar-panel').scrollIntoView({block:'start'});});
+   notice.addEventListener('click',e=>{if(e.target===notice)close();});
+   if(!seen()){try{localStorage.setItem(noticeKey,'1');}catch{}notice.showModal();}
+  }}
  $('lc-reserve-form').addEventListener('submit',async e=>{e.preventDefault();const issues=bookingIssues();if(issues.length){say('lc-reserve-message',issues[0],true);return;}const w=chosenWindow(),assetIds=chosenAssets(),studentId=$('lc-student').value.trim().toUpperCase(),name=$('lc-name').value.trim();const draft=JSON.stringify({assetIds,start:w.start.toISOString(),end:w.end.toISOString(),studentId,name});if(applyDraft?.draft!==draft)applyDraft={draft,key:newKey()};const key=applyDraft.key;saveKeys([...savedKeys(),key]);try{localStorage.setItem('lc-borrower',JSON.stringify({studentId,name}));}catch{}
   const submit=e.currentTarget.querySelector('button[type=submit]'),generation=privacyGeneration,restore=busy(submit,'送出中…');say('lc-reserve-message','正在向系統確認時段…');try{const result=await mutate('apply',{studentId,name,assetIds,start:w.start.toISOString(),end:w.end.toISOString(),key},'apply');applyDraft=null;justReserved=result?.reservation?.id||null;await Promise.all([loadCalendar(true),loadMe(true)]);if(generation===privacyGeneration){say('lc-reserve-message','預約已送出，等待幹部同意。請現在私訊社團 Instagram 告知借車。','ok');say('lc-member-message','預約已送出。請私訊社團 Instagram，幹部同意後就能在取車時間自行取車。','ok');selectedBike=null;$('lc-ig-ack').checked=false;renderCalendar();scrollTo($('lc-member'));}}catch(err){if(err.status){saveKeys(savedKeys().filter(k=>k!==key));applyDraft=null;}if(err.code!=='TOKEN_CHANGED'&&generation===privacyGeneration)say('lc-reserve-message',`預約失敗：${err.message}`,true);await loadCalendar(true);}finally{restore();updateBooking();}});
  $('lc-start').addEventListener('input',()=>{timeEdited=true;});for(const id of ['lc-start','lc-end'])$(id).addEventListener('input',()=>{limitTimes();renderAccessories();updateBooking();});

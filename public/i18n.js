@@ -1,4 +1,4 @@
-import {english} from './translations.js?v=day1011';
+import {english} from './translations.js?v=notice1011';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
