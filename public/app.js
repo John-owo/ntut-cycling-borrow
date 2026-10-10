@@ -1,4 +1,4 @@
-import {confirmLocalized} from './i18n.js?v=appointments0929';
+import {confirmLocalized} from './i18n.js?v=en1010';
 import {api,safeContact,node,date,appointmentDetails} from './api.js?v=lifecycle1008';
 const $=id=>document.getElementById(id);
 // New waiting registrations are closed on the member page; existing queue lookups remain. Parts of the
