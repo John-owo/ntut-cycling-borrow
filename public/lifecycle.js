@@ -278,7 +278,7 @@ if($('lc-admin')){
   const assets=staff.assets||[],members=staff.members||[],reservations=staff.reservations||[],notifications=staff.notifications||[],now=new Date();
   const awaiting=reservations.filter(r=>r.status==='reserved'&&r.approval==='pending').sort((a,b)=>new Date(a.start)-new Date(b.start));
   const waitingReview=reservations.filter(r=>r.status==='inspection'),late=reservations.filter(overdue),upcoming=reservations.filter(r=>r.status==='reserved'&&r.approval!=='pending').sort((a,b)=>new Date(a.start)-new Date(b.start)),inUse=reservations.filter(r=>r.status==='in_use'&&!overdue(r)).sort((a,b)=>new Date(a.end)-new Date(b.end));
-  const setup=[['取車地點與規範已發布',!!staff.settings?.termsVersion,'policy','前往設定規範'],['至少一台車輛已盤點為「可借用」（須先設定下方原登記的社車總數）',assets.some(a=>a.kind==='bike'&&a.state==='available'),'fleet','前往車輛配件']];
+  const setup=[['取車地點與規範已發布',!!staff.settings?.termsVersion,'policy','前往設定規範'],['至少一台車輛已盤點為「可借用」',assets.some(a=>a.kind==='bike'&&a.state==='available'),'fleet','前往車輛配件']];
   const counts={todo:awaiting.length+waitingReview.length+late.length,bookings:reservations.filter(r=>['reserved','in_use','inspection'].includes(r.status)).length,fleet:assets.length,members:members.length,policy:staff.settings?.termsVersion?'':'!'};
   for(const c of document.querySelectorAll('.lc-count')){const v=counts[c.dataset.count];c.textContent=v?String(v):'';c.classList.toggle('alert',c.dataset.count==='todo'&&v>0||c.dataset.count==='policy'&&v==='!');}
   // To-do: what needs an officer now.

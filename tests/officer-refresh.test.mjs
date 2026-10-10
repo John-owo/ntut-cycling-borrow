@@ -30,7 +30,7 @@ async function ready(p){const task=p.refresh();p.calls[0].resolve(snapshot(0));a
 
 test('A completed officer action reads again after a stale poll before unlocking controls',async()=>{
  const p=page();await ready(p);const poll=p.refresh();
- p.openAction({id:1,name:'Synthetic',studentId:'QA1',bikeNote:''},'lend');
+ p.openAction({id:1,name:'Synthetic',studentId:'QA1',bikeNote:''},'cancel');
  const action=p.submit('action-form');assert.equal(p.calls[2].path,'/api/admin/action');
  p.calls[2].resolve({});await settle();
  assert.equal(p.get('dialog-confirm').disabled,true,'keep the action pending while reconciling');
@@ -48,11 +48,12 @@ test('An uncertain officer action still reconciles from a fresh read after the o
  assert.equal(p.get('borrowed').textContent,1);assert.match(p.get('dialog-message').textContent,/network failed/);
 });
 
-test('Saved settings receive a fresh snapshot instead of the in-flight previous totals',async()=>{
- const p=page();await ready(p);const poll=p.refresh();p.get('settings-form').elements.total.value='7';
- const action=p.submit('settings-form');assert.equal(p.calls[2].path,'/api/admin/settings');
- p.calls[2].resolve({});await settle();p.calls[1].resolve(snapshot(0));await poll;await settle();
- assert.equal(p.calls[3]?.path,'/api/admin/records');
- const next=snapshot(0);next.summary.total=7;next.summary.available=7;p.calls[3].resolve(next);await action;
- assert.equal(p.get('total').textContent,7);assert.equal(p.get('settings-form').elements.total.value,7);
+test('The closed legacy desk only cancels waiting entries and returns legacy loans',async()=>{
+ const p=page();const task=p.refresh();const next=snapshot(1);
+ next.records=[{id:1,name:'Waiting',studentId:'QA1',status:'waiting',createdAt:0,updatedAt:0},{id:2,name:'Out',studentId:'QA2',status:'borrowed',createdAt:0,updatedAt:0}];
+ p.calls[0].resolve(next);await task;
+ const labels=root=>[root.textContent,...(root.children||[]).flatMap(labels)].filter(Boolean);
+ const waiting=labels(p.get('records'));assert.ok(waiting.includes('取消登記'));
+ for(const closed of ['確認借出','確認聯絡與時間'])assert.ok(!waiting.includes(closed),closed);
+ assert.equal(p.calls.some(c=>['/api/admin/settings','/api/admin/borrowed'].includes(c.path)),false);
 });

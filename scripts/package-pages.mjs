@@ -8,7 +8,7 @@ if(fleetPhotos.some(file=>!/^fleet-reference-20261008\/bike-0[1-7]-S__\d+_0-2026
 
 // Publish only the borrowing service. Preserved historical photos are not deploy assets.
 export const borrowingFiles = Object.freeze([
-  'index.html','admin.html','club.html','app.js','admin.js','api.js','i18n.js',
+  'index.html','admin.html','club.html','admin.js','api.js','i18n.js',
   'translations.js','style.css','brand-tokens.css','config.js','favicon.svg','ntut-club-logo.png',
   'lifecycle.js','lifecycle.css','fleet-catalog.js',...fleetPhotos,
 ]);

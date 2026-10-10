@@ -8,7 +8,7 @@ import { createApp } from '../server/app.mjs';
 
 test('HTTP / SQLite: permissions, queue, concurrency, retries, persistence',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'bike-backend-'));const dbPath=join(dir,'db.sqlite');let app;let base;let bearer;
- const start=async(extra={})=>{app=createApp({dbPath,...extra});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
+ const start=async(extra={})=>{app=createApp({dbPath,legacyEntry:true,...extra});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
  const call=async(path,body,admin=false)=>{const response=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${bearer}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,...await response.json()};};
  const registration=id=>({studentId:id.toUpperCase(),name:'Test member',contactType:'line',contact:'test-only',purpose:'group_ride',token:randomBytes(32).toString('hex')});
  try{
@@ -113,7 +113,7 @@ function remainingToken(a,b,winner){return winner.studentId===a.studentId?b.toke
 
 test('Borrowed adjustment: authenticated, bounded, stale-safe and permanent retries preserve member records',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'bike-adjustment-'));const dbPath=join(dir,'db.sqlite');let app,base,bearer;
- const start=async()=>{app=createApp({dbPath});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
+ const start=async()=>{app=createApp({dbPath,legacyEntry:true});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${app.server.address().port}`;};
  const call=async(path,body,admin=true)=>{const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${bearer}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,...await r.json()};};
  let seq=100;const form=(borrowed,expectedBorrowed=3,expectedOpening=2)=>({borrowed,expectedBorrowed,expectedOpening,requestId:`00000000-0000-4000-8000-${String(seq++).padStart(12,'0')}`,reason:'  逶､鮟樊峩豁｣  '});
  try{

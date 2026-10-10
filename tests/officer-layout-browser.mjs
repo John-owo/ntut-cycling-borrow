@@ -9,13 +9,13 @@ const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAY
 const output=mkdtempSync(join(tmpdir(),'bike-officer-layout-'));
 const app=createApp({dbPath:join(output,'synthetic.sqlite'),publicDir:resolve('public')});
 const username='qa-'+'a'.repeat(57),name='W'.repeat(60),studentId='S'.repeat(30),contact='c'.repeat(100);
-app.addAdmin(username,'synthetic-only-password-123');app.db.prepare('UPDATE settings SET total=6 WHERE id=1').run();
+app.addAdmin(username,'synthetic-only-password-123');
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${app.server.address().port}`;
 const browser=await chromium.launch({channel:'msedge',headless:true}),page=await browser.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 try{
- const response=await fetch(base+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({studentId,name,contactType:'line',contact,purpose:'group_ride',token:'f'.repeat(64)})});
- assert.equal(response.status,200);
+ // The legacy queue is closed, so the leftover entry is a synthetic row from before the closure.
+ const at=new Date().toISOString();app.db.prepare("INSERT INTO records(studentId,name,contactType,contact,purpose,tokenHash,status,createdAt,updatedAt) VALUES(?,?,'line',?,'group_ride',?,'waiting',?,?)").run(studentId,name,contact,'f'.repeat(64),at,at);
  await page.goto(base+'/admin.html');await page.locator('[name=username]').fill(username);await page.locator('[name=password]').fill('synthetic-only-password-123');await page.locator('#login-form button').click();await page.locator('#workspace:not([hidden])').waitFor();
  for(const language of ['zh','en']){
   await page.locator(`[data-language=${language}]`).click();

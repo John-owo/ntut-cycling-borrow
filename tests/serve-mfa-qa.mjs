@@ -33,7 +33,7 @@ const server=http.createServer(async(req,res)=>{
   res.end(`window.BIKE_CONFIG=${JSON.stringify({mode:'supabase',supabaseUrl:`http://127.0.0.1:${server.address().port}`,supabaseKey:'synthetic-public-key'})}`);return;
  }
  const name=path==='/'?'admin.html':path.slice(1);
- if(!['admin.html','index.html','api.js','app.js','admin.js','i18n.js','translations.js','style.css','brand-tokens.css','favicon.svg','ntut-club-logo.png'].includes(name)){send(404,{});return;}
+ if(!['admin.html','index.html','api.js','admin.js','i18n.js','translations.js','style.css','brand-tokens.css','favicon.svg','ntut-club-logo.png'].includes(name)){send(404,{});return;}
  const type=name.endsWith('.html')?'text/html':name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':name.endsWith('.png')?'image/png':'image/svg+xml';
  res.writeHead(200,{'Content-Type':type+'; charset=utf-8'});res.end(readFileSync(resolve('public',name)));
 });

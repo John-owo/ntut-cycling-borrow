@@ -4,6 +4,10 @@
 
 新流程原圖總預算為 192 MiB，保留有效借用尚未完成的必要取還車照片額度；幹部 `list.storage` 可查看已用、預留與上限。這不是整個託管資料庫的容量保證，長期使用仍需監控並規劃私有物件儲存、備份及保留政策。
 
+## 014：關閉舊版登記、編號社車脫離舊總車數（2026-10-11）
+
+在 013 之後執行一次 `migrations/014_close_legacy_queue.sql`（重複執行會被擋下）。內容：移除「可用編號車＋舊借出不可超過社車總數」的三個觸發器與函式；`borrowed_count()` 改回只計舊版借用；重建 `lifecycle_apply_core` 與 `lifecycle_member_core`，取車不再檢查舊總車數，且只有舊版仍借用中的學號會擋預約（殘留等候不再阻擋）；`private.records` 的觸發器改為禁止任何紀錄新增或轉入等候／借出；撤銷 `summary`、`register`（所有多載）、`lookup`、`admin_settings`、`admin_set_borrowed`、`admin_confirm_schedule` 的執行權限。既有舊版紀錄、設定與期初借用數不會被修改，幹部仍可歸還、取消、匯出。新前端不呼叫上述 RPC，可在 014 之前或之後發布；014 之前，車輛上架仍會受舊總數限制。
+
 ## 013：移除取車指引欄位（2026-10-11）
 
 在 012 之後、**發布對應前端之前**執行一次 `migrations/013_remove_pickup_instructions.sql`。社辦位置與借車規範仍為必填；`instructions` 不再必填、不再寫入、也不再由 API 回傳，開放預約的條件只剩位置與規範。尚未更新的舊頁面若仍送出 `instructions` 會被接受並忽略；資料表欄位與既有內容保持不動。用 `create or replace` 重新定義 `lifecycle_policy_ready`、`lifecycle_settings_json` 與 `lifecycle_admin_core`，可安全重跑。先套用 013 再發布前端，才不會出現新表單被舊函式拒絕的空窗。
