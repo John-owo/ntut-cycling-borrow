@@ -50,7 +50,10 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     const member1 = (await staff('member', { studentId: 'S001', name: '測試社員一', contact: 'test', validUntil: until, active: true, token: t1, reason: '測試核對' })).member;
     await staff('member', { studentId: 'S002', name: '測試社員二', contact: 'test', validUntil: until, active: true, token: t2, reason: '測試核對' });
     assert.equal((await member('reserve', t1, { requestId: uid(), assetIds: [asset.id], start: new Date(Date.now() + 500).toISOString(), end: new Date(Date.now() + 3600000).toISOString() })).status, 409);
-    const settings = (await staff('settings', { location: '測試社辦', instructions: '測試取車方式', terms: '測試借車規範' })).settings;
+    const settings = (await staff('settings', { location: '測試社辦', terms: '測試借車規範' })).settings;
+    assert.deepEqual(Object.keys(settings).sort(), ['location', 'terms', 'termsVersion']);
+    assert.equal((await staff('settings', { location: '測試社辦', terms: '測試借車規範', extra: 'x' })).status, 400);
+    assert.equal((await staff('settings', { location: '測試社辦' })).status, 400);
     const startAt = new Date(Date.now() + 700).toISOString(), endAt = new Date(Date.now() + 3600000).toISOString();
     const reserve = { requestId: uid(), assetIds: [asset.id, accessory.id], start: startAt, end: endAt };
     const first = await member('reserve', t1, reserve);

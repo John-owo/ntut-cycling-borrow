@@ -105,3 +105,24 @@ test('012 self-service application, officer approval, scoped key and reissue',as
   const dump=await admin('export');assert.equal(JSON.stringify(dump).includes(k3),false);
  }finally{await db.close();}
 });
+
+test('013 retires pickup instructions: booking opens without them and legacy payloads still work',async()=>{
+ const {db,rpc,admin}=await setup();
+ try{
+  await db.exec(sql('012_self_service_booking.sql'));
+  const bike=(await admin('asset',{code:'B-1',name:'Bike',kind:'bike',state:'available',reason:'Counted'})).asset;
+  const apply={requestId:uuid(),studentId:'t200',name:'Rider',assetIds:[bike.id],start:iso(2000),end:iso(3600000),key:key()};
+  await db.exec(sql('013_remove_pickup_instructions.sql'));
+  assert.match((await rpc('apply',apply)).message,/policy incomplete/);
+  await assert.rejects(admin('settings',{location:'Office'}),/Invalid settings/);
+  await assert.rejects(admin('settings',{terms:'Rules'}),/Invalid settings/);
+  await assert.rejects(admin('settings',{location:'Office',terms:'Rules',extra:'x'}),/Invalid settings/);
+  const policy=(await admin('settings',{location:'Office',terms:'Rules'})).settings;
+  assert.deepEqual(Object.keys(policy).sort(),['location','terms','termsVersion']);
+  assert.equal((await rpc('apply',{...apply,requestId:uuid()})).reservation.approval,'pending');
+  const legacy=(await admin('settings',{location:'Office 2',instructions:'ignored legacy text',terms:'Rules 2'})).settings;
+  assert.equal(legacy.location,'Office 2');assert.equal('instructions' in legacy,false);
+  assert.equal((await db.query('select instructions from private.lifecycle_settings where id=1')).rows[0].instructions,'');
+  for(const role of ['anon','authenticated']) assert.equal((await db.query("select has_function_privilege($1,'private.lifecycle_admin_core(text,jsonb)','execute') p",[role])).rows[0].p,false);
+ }finally{await db.close();}
+});

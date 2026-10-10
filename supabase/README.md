@@ -4,6 +4,10 @@
 
 新流程原圖總預算為 192 MiB，保留有效借用尚未完成的必要取還車照片額度；幹部 `list.storage` 可查看已用、預留與上限。這不是整個託管資料庫的容量保證，長期使用仍需監控並規劃私有物件儲存、備份及保留政策。
 
+## 013：移除取車指引欄位（2026-10-11）
+
+在 012 之後、**發布對應前端之前**執行一次 `migrations/013_remove_pickup_instructions.sql`。社辦位置與借車規範仍為必填；`instructions` 不再必填、不再寫入、也不再由 API 回傳，開放預約的條件只剩位置與規範。尚未更新的舊頁面若仍送出 `instructions` 會被接受並忽略；資料表欄位與既有內容保持不動。用 `create or replace` 重新定義 `lifecycle_policy_ready`、`lifecycle_settings_json` 與 `lifecycle_admin_core`，可安全重跑。先套用 013 再發布前端，才不會出現新表單被舊函式拒絕的空窗。
+
 ## 012：自助預約與幹部同意（2026-10-09）
 
 在 001–011 之後執行一次 `migrations/012_self_service_booking.sql`，再發布新版前端（舊前端在 012 後仍可運作）。內容：`lifecycle_reservations` 新增 `access_hash`（唯一、可為空）、`approval`（既有紀錄預設 `approved`）與 `approved_at`；`lifecycle_requests.actor_type` 增加 `applicant`；新增 `private.lifecycle_apply_core`，並以 `create or replace` 更新 `lifecycle_reservation_json`、`lifecycle_member_core`、`lifecycle_admin_core`、`lifecycle_public_rpc`（公開入口與權限不變）。匿名 `apply` 使用 006 的登記額度；幹部新增 `approve` 與 `access`。開頭檢查 `access_hash` 欄位已存在即中止，整份在單一交易內，失敗不會留下部分變更。`tests/self-service-postgres.test.mjs` 以 PGlite 套用 001–012 驗證；這不代表 Supabase 託管環境的多連線實測。
@@ -14,7 +18,7 @@
 
 正式入口為 `lifecycle(p_action,p_token,p_payload)` 與 `lifecycle_admin(p_action,p_payload)`，只接受 POST。社員使用獨立 64 位十六進位憑證，資料庫僅保存 SHA-256；幹部仍由既有 Auth session、幹部名單與 MFA 檢查。`private.lifecycle_*` 表啟用 RLS 且不授權 `anon`／`authenticated` 直接讀寫；公開日曆不含社員身分資料。取車要先上傳四個固定角度、完成檢查並簽署當版條款；還車也要四個角度與檢查。照片原始位元組與簽署圖片在私人資料表中僅新增、不覆寫，單張照片上限 8 MiB，每一階段最多 12 張，簽署 PNG 上限 256 KiB。完整備份由幹部 `lifecycle_admin('export',{})` 取得，包含原始照片及 token 雜湊，應按敏感資料保存。
 
-`tests/lifecycle-postgres.test.mjs` 以 PGlite 載入 001–009，驗證角色權限、預約衝突、必要照片／檢查、異常隔離、原始證據不可修改及備份；新舊庫存整合由 010 的獨立測試驗證。這些測試不能證明 Supabase 託管環境的多連線競爭、真 Auth／MFA 或手機相機實測。正式政策的社辦位置、取車指引與條款需由幹部確認填入，不推測校方正式資訊。
+`tests/lifecycle-postgres.test.mjs` 以 PGlite 載入 001–009，驗證角色權限、預約衝突、必要照片／檢查、異常隔離、原始證據不可修改及備份；新舊庫存整合由 010 的獨立測試驗證。這些測試不能證明 Supabase 託管環境的多連線競爭、真 Auth／MFA 或手機相機實測。正式政策的社辦位置與條款需由幹部確認填入，不推測校方正式資訊。
 
 ## 011：已確認的車號清單
 
