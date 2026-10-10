@@ -116,7 +116,7 @@ if(memberPage){
   $('lc-duration').textContent=w&&w.end>w.start?`共 ${span(w.end-w.start)}${w.end-w.start>maxSpan?'（超過五天上限）':''}`:'';
   for(const b of document.querySelectorAll('.lc-durations button'))b.setAttribute('aria-pressed',String(!!w&&+w.end-+w.start===Number(b.dataset.hours)*hourMs));
   box.replaceChildren();
-  if(bike&&w&&w.end>w.start){const list=make('dl',undefined,'lc-summary');for(const [k,v] of [['車輛',`${bike.code} · ${bike.name}`],['配件',extras.join('、')||'無'],['借用',when(w.start)],['歸還',when(w.end)]]){list.append(make('dt',k),make('dd',v));}box.append(list);}
+  if(bike&&w&&w.end>w.start){const list=make('div',undefined,'lc-summary');for(const [k,v] of [['車輛',`${bike.code} · ${bike.name}`],['配件',extras.join('、')||'無'],['借用',when(w.start)],['歸還',when(w.end)]]){list.append(make('span',k,'lc-summary-key'),make('span',v,'lc-summary-value'));}box.append(list);}
   const active=(me?.reservations||[]).find(r=>['reserved','in_use','inspection'].includes(r.status));
   if(issues.length){const ul=make('ul',undefined,'lc-issues');for(const text of issues)ul.append(make('li',text));box.append(ul);}
   else if(active)box.append(make('p','這支手機已有進行中的預約或借用；同一學號一次只能有一筆。','lc-hint'));
@@ -132,7 +132,7 @@ if(memberPage){
  async function loadMe(quiet=false){const keys=savedKeys(),generation=++memberGeneration,privacy=privacyGeneration;if(!keys.length){me=null;keyOf.clear();renderRecords();updateBooking();return true;}if(!quiet)say('lc-member-message','正在讀取這支手機的借車紀錄…');const results=await Promise.all(keys.map(k=>lifecycle('me',{},k).then(v=>({k,v}),e=>({k,e}))));if(generation!==memberGeneration||privacy!==privacyGeneration)return false;const lost=results.filter(x=>x.e?.status===401).map(x=>x.k);if(lost.length)saveKeys(savedKeys().filter(k=>!lost.includes(k)));const failed=results.filter(x=>x.e&&x.e.status!==401),found=new Map();keyOf.clear();let member=null,settings=null;for(const {k,v} of results.filter(x=>x.v)){settings=v.settings||settings;member=member||v.member;for(const r of v.reservations||[])if(!found.has(r.id)){found.set(r.id,r);keyOf.set(r.id,k);}}me={member,settings,reservations:[...found.values()].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))};renderRecords();updateBooking();if(failed.length){say('lc-member-message',`有借車紀錄暫時無法讀取：${failed[0].e.message}`,true);return false;}if(!quiet)say('lc-member-message','已更新這支手機的借車紀錄。','ok');return true;}
 
  const pending=r=>r.status==='reserved'&&r.approval==='pending';
- function progress(r){const steps=[['送出預約',true],['幹部同意',r.approval!=='pending'],['取車使用',!!r.pickedUpAt],['還車',!!r.returnedAt||r.status==='inspection']];const current=pending(r)?1:r.status==='reserved'?2:r.status==='in_use'?2:-1;const ol=make('ol',undefined,'lc-progress');steps.forEach(([label,done],i)=>{const li=make('li',label);if(done)li.classList.add('done');if(i===current)li.setAttribute('aria-current','step');ol.append(li);});return ol;}
+ function progress(r){const steps=[['已送出',true],['幹部同意',r.approval!=='pending'],['取車使用',!!r.pickedUpAt],['還車',!!r.returnedAt||r.status==='inspection']];const current=pending(r)?1:r.status==='reserved'?2:r.status==='in_use'?2:-1;const ol=make('ol',undefined,'lc-progress');steps.forEach(([label,done],i)=>{const li=make('li',label);if(done)li.classList.add('done');if(i===current)li.setAttribute('aria-current','step');ol.append(li);});return ol;}
  function nextStep(r){const now=new Date(),start=new Date(r.start),end=new Date(r.end);
   if(pending(r))return ['已送出，等待幹部同意。請私訊社團 Instagram，告知學號、姓名、車號與借用時間；幹部同意後才能取車。','warn'];
   if(r.status==='reserved'){if(now<start)return [`可於 ${when(r.start)} 起開始取車檢查（還有 ${span(start-now)}）。到社辦後依序拍照、檢查並簽署。`,'info'];if(now<end)return ['現在可以取車：到社辦後依序拍照、檢查並簽署，完成後借用才正式開始。','go'];return ['預約時段已結束，無法再取車。請聯絡幹部或取消此預約。','warn'];}
@@ -143,7 +143,7 @@ if(memberPage){
   const box=make('article',undefined,'lc-record');box.dataset.status=r.status;if(r.id===justReserved)box.classList.add('is-new');const bike=bikeOf(r),extras=accessoriesOf(r);
   const title=make('div',undefined,'lc-asset-head');title.append(make('strong',`${bike?`${bike.code} · ${bike.name}`:'車輛'}`),pill(overdue(r)?'已逾期':pending(r)?'待幹部同意':statusNames[r.status]||r.status,overdue(r)||pending(r)?'warn':statusTone[r.status]));box.append(title);
   if(r.id===justReserved)box.append(make('p','剛送出預約','lc-new-badge'));
-  if(r.borrower?.name)box.append(details('借用人',`${r.borrower.name}${r.borrower.studentId?`（${r.borrower.studentId}）`:''}`));
+  if(r.borrower?.name)box.append(details('借用人',`${r.borrower.name}${r.borrower.studentId?` · ${r.borrower.studentId}`:''}`));
   if(['reserved','in_use','inspection','returned'].includes(r.status))box.append(progress(r));
   box.append(details('預約時段',range(r.start,r.end)));if(extras.length)box.append(details('配件',extras.map(a=>`${a.code} ${a.name}`).join('、')));if(r.pickedUpAt)box.append(details('實際取車',fmt(r.pickedUpAt)));if(r.returnedAt)box.append(details('實際歸還',fmt(r.returnedAt)));
   const next=nextStep(r);if(next)box.append(make('p',next[0],`lc-next ${next[1]}`));

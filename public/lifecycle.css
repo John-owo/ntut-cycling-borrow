@@ -128,3 +128,4 @@
 .lc-transfer{margin-top:18px;border-top:1px solid var(--line,#dce0ee)}.lc-transfer>summary{cursor:pointer;color:var(--navy,#243c8a);font-weight:700;font-size:14px;min-height:44px;display:flex;align-items:center}.lc-transfer .fine{margin:0 0 10px}.lc-transfer #lc-token-clear{margin-top:8px}
 .lc-record .lc-actions a.button{min-height:44px;padding:6px 14px;font-size:13px}
 .legacy-status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px!important;color:var(--body,#333e4d)!important}.legacy-status strong{color:var(--navy,#243c8a);font-size:16px}.legacy-status span{color:var(--muted,#586476);font-size:12px}
+.lc-summary-key{color:var(--muted,#586476)}.lc-summary-value{font-weight:600;color:var(--ink,#14181f);overflow-wrap:anywhere}
