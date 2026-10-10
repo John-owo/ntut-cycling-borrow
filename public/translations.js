@@ -317,6 +317,7 @@ Object.assign(english, {
   "待建檔": "Not registered",
   "可借用": "Available",
   "部分時段已預約": "Partly booked",
+  "整天已預約": "Booked all day",
   "使用中": "In use",
   "待檢查": "Awaiting inspection",
   "維修中": "In maintenance",
