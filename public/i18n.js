@@ -1,9 +1,9 @@
-import {english} from './translations.js?v=day1011';
+import {english} from './translations.js?v=today1011';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
 // Converts zh date, time and duration fragments produced by the booking page.
-const enDates=text=>text.replace(/(\d{1,2}\/\d{1,2})（週([一二三四五六日])）/g,(m,d,w)=>`${weekdays[w]} ${d}`).replace(/週([一二三四五六日])/g,(m,w)=>weekdays[w]).replace(/ 起，尚未歸還/g,' onward, not yet returned').replace(/ 整天/g,' all day').replace(/不到 1 分鐘/g,'under 1 min').replace(/(\d+) 天/g,'$1 d').replace(/(\d+) 小時/g,'$1 h').replace(/(\d+) 分/g,'$1 min').replace(/；/g,'; ');
+const enDates=text=>text.replace(/(\d{1,2}\/\d{1,2})（週([一二三四五六日])）/g,(m,d,w)=>`${weekdays[w]} ${d}`).replace(/週([一二三四五六日])/g,(m,w)=>weekdays[w]).replace(/ 起，尚未歸還/g,' onward, not yet returned').replace(/ 整天/g,' all day').replace(/（含今天剩餘時間）/g,' (rest of today included)').replace(/不到 1 分鐘/g,'under 1 min').replace(/(\d+) 天/g,'$1 d').replace(/(\d+) 小時/g,'$1 h').replace(/(\d+) 分/g,'$1 min').replace(/；/g,'; ');
 const enList=text=>text.split('、').map(item=>translate(item)).join(', ');
 const patterns=[
  [/^確認 (.+) 已主動聯絡，且雙方已確認上述預計時間？$/,m=>`Confirm that ${m[1]} has contacted the club and both parties agreed to the proposed times?`],
