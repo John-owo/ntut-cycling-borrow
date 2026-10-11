@@ -17,7 +17,8 @@ app.addAdmin('qa-admin','qa-only-password-123');
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.server.address().port}`;
 const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL || 'msedge',headless:true});
-const page=await browser.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const context=await browser.newContext();await context.addInitScript(()=>{try{localStorage.setItem('lc-notice-booking-1011','1');}catch{}});// first-visit notice is covered by first-visit-notice-browser.mjs
+const page=await context.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const results=[];
 // The legacy queue is closed: leftover entries exist only as synthetic rows created before the closure.
 function legacyRow(studentId,name,status,purpose){const at=new Date().toISOString();app.db.prepare("INSERT INTO records(studentId,name,contactType,contact,purpose,tokenHash,status,createdAt,updatedAt) VALUES(?,?,'instagram','synthetic-only',?,?,?,?,?)").run(studentId,name,purpose,Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join(''),status,at,at);}
