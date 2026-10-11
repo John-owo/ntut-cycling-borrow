@@ -483,4 +483,7 @@ Object.assign(english, {
   "舊版登記與順位查詢已全部關閉，請直接在日曆預約；有疑問請私訊社團 IG。": "The old sign-up and queue lookup are closed. Please book on the calendar, and DM the club on Instagram with any questions.",
   "開始預約": "Start booking",
   "我知道了": "Got it",
+  "適合身高": "Rider height",
+  "適合身高待幹部提供": "Rider height: not yet provided by officers",
+  "待幹部提供": "Not yet provided",
 });
