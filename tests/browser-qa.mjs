@@ -17,7 +17,8 @@ app.addAdmin('qa-admin','qa-only-password-123');app.db.prepare("UPDATE settings 
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.server.address().port}`;
 const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL || 'msedge',headless:true});
-const page=await browser.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const context=await browser.newContext();await context.addInitScript(()=>{try{localStorage.setItem('lc-notice-booking-1011','1');}catch{}});// first-visit notice is covered by first-visit-notice-browser.mjs
+const page=await context.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const results=[];
 async function openLegacy(){const legacy=page.locator('.lc-legacy');if(await legacy.count()&&await legacy.getAttribute('open')===null)await legacy.locator('summary').click();}
 // New waiting registrations are closed on the member page; existing queue entries are created through the API.

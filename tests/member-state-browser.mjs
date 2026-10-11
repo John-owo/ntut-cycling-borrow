@@ -10,7 +10,7 @@ const app=createApp({dbPath:join(mkdtempSync(join(tmpdir(),'bike-member-race-'))
 app.db.prepare('UPDATE settings SET total=6 WHERE id=1').run();
 await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.server.address().port}`,oldToken='a'.repeat(64),newToken='b'.repeat(64);
-const browser=await chromium.launch({channel:'msedge',headless:true}),page=await browser.newPage(),errors=[];
+const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext(),errors=[];await context.addInitScript(()=>{try{localStorage.setItem('lc-notice-booking-1011','1');}catch{}});const page=await context.newPage();
 page.on('pageerror',e=>errors.push(e.message));
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 try{
