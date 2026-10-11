@@ -42,7 +42,8 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     await start(); app.addAdmin('officer', 'test-password-123');
     bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
     assert.equal((await call('/api/admin/lifecycle', { action: 'list', payload: {} })).status, 401);
-    assert.equal((await call('/api/admin/settings', { total: 2, contactUrl: '' }, true)).status, 200);
+    // The legacy total is closed and never set here: numbered bikes become available without it.
+    assert.equal((await call('/api/admin/settings', { total: 2, contactUrl: '' }, true)).status, 410);
     const asset = (await staff('asset', { code: 'B-01', name: '測試車', kind: 'bike', state: 'available', reason: '盤點' })).asset;
     const accessory = (await staff('asset', { code: 'H-01', name: '安全帽', kind: 'accessory', state: 'available', reason: '盤點' })).asset;
     const t1 = randomBytes(32).toString('hex'), t2 = randomBytes(32).toString('hex');
@@ -59,7 +60,10 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     const first = await member('reserve', t1, reserve);
     assert.equal(first.status, 200); assert.equal(first.reservation.status, 'reserved');
     assert.deepEqual(first.reservation.borrower, { studentId: 'S001', name: '測試社員一', contact: 'test' });
-    assert.equal((await call('/api/register', { studentId: 'S001', name: '測試社員一', contactType: 'line', contact: 'test', purpose: 'group_ride', token: randomBytes(32).toString('hex') })).status, 409);
+    assert.equal((await call('/api/register', { studentId: 'S001', name: '測試社員一', contactType: 'line', contact: 'test', purpose: 'group_ride', token: randomBytes(32).toString('hex') })).status, 410);
+    assert.equal((await call('/api/me', { token: randomBytes(32).toString('hex') })).status, 410);
+    for (const [path, body] of [['/api/admin/action', { id: 1, action: 'lend' }], ['/api/admin/confirm-schedule', { id: 1 }], ['/api/admin/borrowed', { borrowed: 1, expectedBorrowed: 0, expectedOpening: 0, requestId: uid(), reason: 'x' }]]) assert.equal((await call(path, body, true)).status, 410, path);
+    assert.equal((await call('/api/admin/action', { id: 1, action: 'lend' })).status, 401, 'closed officer routes still require login');
     assert.equal((await member('reserve', t1, reserve)).reservation.id, first.reservation.id);
     assert.equal((await member('reserve', t1, { ...reserve, end: new Date(Date.now() + 7200000).toISOString() })).status, 409);
     assert.equal((await member('reserve', t2, { requestId: uid(), assetIds: [asset.id], start: startAt, end: endAt })).status, 409);
@@ -87,7 +91,8 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     await staff('member', { id: member1.id, studentId: 'S001', name: '測試社員一', contact: 'test', validUntil: until, active: true, reason: '恢復資格' });
     const begun = await member('pickup', t1, pickup);
     assert.equal(begun.status, 200); assert.equal(begun.reservation.status, 'in_use');
-    assert.equal((await call('/api/summary')).borrowed, 1);
+    assert.equal((await call('/api/summary')).status, 410);
+    assert.equal((await call('/api/admin/records', undefined, true)).summary.borrowed, 0, 'numbered loans stay out of the legacy count');
     assert.equal((await member('pickup', t1, pickup)).reservation.pickedUpAt, begun.reservation.pickedUpAt);
     const read = await member('photo_read', t1, { id: photo.photo.id }); assert.equal(read.photo.data, cameraPng);
     assert.equal((await member('return', t1, { requestId: uid(), reservationId: first.reservation.id, checks: all, notes: '', abnormal: false })).status, 409);
@@ -127,7 +132,6 @@ test('SQLite HTTP serializes competing reservations and blocks adjacent pickup d
   try {
     app = createApp({ dbPath: join(dir, 'db.sqlite'), rateLimit: 1000 }); await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); base = `http://127.0.0.1:${app.server.address().port}`;
     app.addAdmin('officer', 'test-password-123'); bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
-    await call('/api/admin/settings', { total: 1, contactUrl: '' }, true);
     const asset = (await staff('asset', { code: 'B-02', name: '測試車', kind: 'bike', state: 'available', reason: '盤點' })).asset;
     const termsVersion = (await staff('settings', { location: '測試', instructions: '測試', terms: '測試規範' })).settings.termsVersion;
     const t1 = randomBytes(32).toString('hex'), t2 = randomBytes(32).toString('hex');
@@ -162,7 +166,6 @@ test('SQLite photo budget reserves mandatory slots and releases reservations wit
   try {
     app = createApp({ dbPath: join(dir, 'db.sqlite') }); await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); base = `http://127.0.0.1:${app.server.address().port}`;
     app.addAdmin('officer', 'test-password-123'); bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
-    await call('/api/admin/settings', { total: 2, contactUrl: '' }, true);
     const staged = (await staff('asset', { code: 'B-STAGED', name: '待盤點車', kind: 'bike', state: 'inspection', reason: '新車盤點' })).asset;
     assert.equal((await staff('asset', { id: staged.id, code: staged.code, name: staged.name, kind: staged.kind, state: 'available', reason: '盤點完成' })).status, 200);
     const other = (await staff('asset', { code: 'B-OTHER', name: '第二台車', kind: 'bike', state: 'available', reason: '盤點完成' })).asset;

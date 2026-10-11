@@ -18,7 +18,7 @@ const raw = (port, { path = '/api/summary', method = 'GET', headers = {}, body }
 
 test('Changing unknown API paths cannot bypass the address request budget',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'bike-path-budget-'));
- const app=createApp({dbPath:join(dir,'db.sqlite'),rateLimit:3});
+ const app=createApp({dbPath:join(dir,'db.sqlite'),rateLimit:3,legacyEntry:true});
  await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const port=app.server.address().port;
  try{
   assert.equal((await raw(port)).status,200);
@@ -33,7 +33,7 @@ test('Changing unknown API paths cannot bypass the address request budget',async
 
 test('Loopback server: Host allowlist blocks DNS rebinding, login has its own throttle, headers and session hygiene', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'bike-security-')); let app;
-  const start = async extra => { app = createApp({ dbPath: join(dir, 'db.sqlite'), ...extra }); await new Promise(r => app.server.listen(0, '127.0.0.1', r)); return app.server.address().port; };
+  const start = async extra => { app = createApp({ dbPath: join(dir, 'db.sqlite'), legacyEntry: true, ...extra }); await new Promise(r => app.server.listen(0, '127.0.0.1', r)); return app.server.address().port; };
   try {
     let port = await start({ loginLimit: 3, origins: ['https://club.example'] });
     app.addAdmin('officer', 'test-password-123');
