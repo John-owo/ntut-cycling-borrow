@@ -129,3 +129,11 @@
 .lc-record .lc-actions a.button{min-height:44px;padding:6px 14px;font-size:13px}
 .legacy-status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px!important;color:var(--body,#333e4d)!important}.legacy-status strong{color:var(--navy,#243c8a);font-size:16px}.legacy-status span{color:var(--muted,#586476);font-size:12px}
 .lc-summary-key{color:var(--muted,#586476)}.lc-summary-value{font-weight:600;color:var(--ink,#14181f);overflow-wrap:anywhere}
+
+/* First-visit notice about calendar booking. */
+.lc-notice{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:0;border:0;border-top:4px solid var(--navy,#243c8a);border-radius:0;background:#fff;color:var(--body,#333e4d);overflow:auto;box-shadow:0 18px 48px #14234259}.lc-notice::backdrop{background:#142342b3}
+.lc-notice-body{padding:22px 22px 20px}.lc-notice .eyebrow{margin:0 0 6px}.lc-notice h2{font-size:24px;line-height:1.25;margin:0 0 10px;color:var(--navy,#243c8a)}.lc-notice p{font-size:14px;margin:0 0 10px}
+.lc-notice ol{margin:0 0 16px;padding-left:22px}.lc-notice li{font-size:14px;line-height:1.6;margin:0 0 8px;padding-left:2px;overflow-wrap:anywhere}
+.lc-notice-legacy{margin:0 0 18px;padding:12px 14px;background:var(--wash,#f4f5fa);border-left:3px solid var(--navy,#243c8a)}.lc-notice-legacy h3{font-size:14px;margin:0 0 4px;color:var(--ink,#14181f)}.lc-notice-legacy p{font-size:13px;margin:0}
+.lc-notice-actions{display:flex;gap:8px;flex-wrap:wrap}.lc-notice-actions button{flex:1 1 140px;min-height:48px;font-size:15px}
+body:has(.lc-notice[open]){overflow:hidden}
