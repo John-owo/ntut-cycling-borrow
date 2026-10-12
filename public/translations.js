@@ -480,7 +480,10 @@ Object.assign(english, {
   "自行到現場取車，不用另外約時間：在網站拍照上傳車況、逐項檢查、簽名": "Go to the pickup spot yourself, with no need to arrange a time. On the website, take and upload photos of the bike's condition, check each item, and sign",
   "還車時同樣拍照上傳、逐項檢查": "When you return it, take and upload photos and check each item again",
   "原等候名單的同學": "Already on the old waiting list?",
-  "你的順位照舊保留，幹部會照原方式聯絡你。舊版登記已不再受理新登記。": "Your spot is kept, and officers will contact you as before. The old form no longer accepts new sign-ups.",
+  "舊版登記與順位查詢已全部關閉，請直接在日曆預約；有疑問請私訊社團 IG。": "The old sign-up and queue lookup are closed. Please book on the calendar, and DM the club on Instagram with any questions.",
   "開始預約": "Start booking",
   "我知道了": "Got it",
+  "適合身高": "Rider height",
+  "適合身高待幹部提供": "Rider height: not yet provided by officers",
+  "待幹部提供": "Not yet provided",
 });

@@ -1,4 +1,4 @@
-import {english} from './translations.js?v=notice1011';
+import {english} from './translations.js?v=fit1012';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
@@ -6,6 +6,8 @@ const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:
 const enDates=text=>text.replace(/(\d{1,2}\/\d{1,2})（週([一二三四五六日])）/g,(m,d,w)=>`${weekdays[w]} ${d}`).replace(/週([一二三四五六日])/g,(m,w)=>weekdays[w]).replace(/ 起，尚未歸還/g,' onward, not yet returned').replace(/ 整天/g,' all day').replace(/（含今天剩餘時間）/g,' (rest of today included)').replace(/不到 1 分鐘/g,'under 1 min').replace(/(\d+) 天/g,'$1 d').replace(/(\d+) 小時/g,'$1 h').replace(/(\d+) 分/g,'$1 min').replace(/；/g,'; ');
 const enList=text=>text.split('、').map(item=>translate(item)).join(', ');
 const patterns=[
+ [/^適合身高 (\d+)–(\d+) cm$/,m=>`Fits riders ${m[1]}–${m[2]} cm`],[/^適合身高 (\d+) cm 以上$/,m=>`Fits riders ${m[1]} cm and up`],[/^適合身高 (\d+) cm 以下$/,m=>`Fits riders up to ${m[1]} cm`],
+ [/^(\d+)–(\d+) cm$/,m=>`${m[1]}–${m[2]} cm`],[/^(\d+) cm 以上$/,m=>`${m[1]} cm and up`],[/^(\d+) cm 以下$/,m=>`Up to ${m[1]} cm`],
  [/^確認 (.+) 已主動聯絡，且雙方已確認上述預計時間？$/,m=>`Confirm that ${m[1]} has contacted the club and both parties agreed to the proposed times?`],
  [/^線上借用 (\d+) 台，未建明細 (\d+) 台；可設定範圍 (\d+)～(\d+) 台。$/,m=>`Online loans: ${m[1]}; loans without details: ${m[2]}. Allowed range: ${m[3]}–${m[4]} bikes.`],
  [/^更新於 (.+)$/,m=>`Updated ${m[1]}`],

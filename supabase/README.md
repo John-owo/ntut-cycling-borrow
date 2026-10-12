@@ -4,6 +4,10 @@
 
 新流程原圖總預算為 192 MiB，保留有效借用尚未完成的必要取還車照片額度；幹部 `list.storage` 可查看已用、預留與上限。這不是整個託管資料庫的容量保證，長期使用仍需監控並規劃私有物件儲存、備份及保留政策。
 
+## 015：車輛適合身高（2026-10-12）
+
+在 014 之後執行一次 `migrations/015_bike_rider_height.sql`（重複執行會被擋下）。`lifecycle_assets` 新增可為空的 `min_height_cm`、`max_height_cm`（100–220，且最低不高於最高）；`lifecycle_asset_json` 多回傳 `minHeight`、`maxHeight`，公開日曆與幹部清單都看得到；重建 `lifecycle_admin_core`，`asset` 動作接受這兩個選填欄位，配件一律存空值，舊版幹部頁未送這兩欄時保留原值。既有車輛不會被填入任何推測值。新前端在 015 之前也能運作：身高顯示為待提供，幹部沒填身高時不會送出這兩欄，所以儲存車輛照常；但要填身高必須先執行 015。
+
 ## 014：關閉舊版登記、編號社車脫離舊總車數（2026-10-11）
 
 在 013 之後執行一次 `migrations/014_close_legacy_queue.sql`（重複執行會被擋下）。內容：移除「可用編號車＋舊借出不可超過社車總數」的三個觸發器與函式；`borrowed_count()` 改回只計舊版借用；重建 `lifecycle_apply_core` 與 `lifecycle_member_core`，取車不再檢查舊總車數，且只有舊版仍借用中的學號會擋預約（殘留等候不再阻擋）；`private.records` 的觸發器改為禁止任何紀錄新增或轉入等候／借出；撤銷 `summary`、`register`（所有多載）、`lookup`、`admin_settings`、`admin_set_borrowed`、`admin_confirm_schedule` 的執行權限。既有舊版紀錄、設定與期初借用數不會被修改，幹部仍可歸還、取消、匯出。新前端不呼叫上述 RPC，可在 014 之前或之後發布；014 之前，車輛上架仍會受舊總數限制。

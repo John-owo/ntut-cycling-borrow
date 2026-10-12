@@ -46,6 +46,14 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     assert.equal((await call('/api/admin/settings', { total: 2, contactUrl: '' }, true)).status, 410);
     const asset = (await staff('asset', { code: 'B-01', name: '測試車', kind: 'bike', state: 'available', reason: '盤點' })).asset;
     const accessory = (await staff('asset', { code: 'H-01', name: '安全帽', kind: 'accessory', state: 'available', reason: '盤點' })).asset;
+    // Officer-entered rider height: optional, validated, kept when an older page omits it, never on accessories.
+    const fit = { id: asset.id, code: 'B-01', name: '測試車', kind: 'bike', state: 'available', reason: '量車架' };
+    assert.deepEqual([asset.minHeight, asset.maxHeight], [null, null]);
+    assert.deepEqual(Object.values((await staff('asset', { ...fit, minHeight: 160, maxHeight: 178 })).asset).slice(-2), [160, 178]);
+    assert.deepEqual(Object.values((await staff('asset', fit)).asset).slice(-2), [160, 178]);
+    for (const bad of [{ minHeight: 99 }, { maxHeight: 221 }, { minHeight: 170.5 }, { minHeight: '170' }, { minHeight: 180, maxHeight: 170 }]) assert.equal((await staff('asset', { ...fit, ...bad })).status, 400, JSON.stringify(bad));
+    assert.equal((await staff('asset', { id: accessory.id, code: 'H-01', name: '安全帽', kind: 'accessory', state: 'available', reason: '盤點', minHeight: 160 })).asset.minHeight, null);
+    assert.equal((await member('calendar', undefined, { start: new Date().toISOString(), end: new Date(Date.now() + 86400000).toISOString() })).assets.find(a => a.id === asset.id).maxHeight, 178);
     const t1 = randomBytes(32).toString('hex'), t2 = randomBytes(32).toString('hex');
     const until = new Date(Date.now() + 7 * 86400000).toISOString();
     const member1 = (await staff('member', { studentId: 'S001', name: '測試社員一', contact: 'test', validUntil: until, active: true, token: t1, reason: '測試核對' })).member;
