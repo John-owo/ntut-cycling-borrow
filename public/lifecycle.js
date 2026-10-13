@@ -1,4 +1,4 @@
-import {lifecycle,currentAdmin,date} from './api.js?v=lifecycle1008';
+import {lifecycle,currentAdmin,date} from './api.js?v=photo1013';
 import {confirmedFleet} from './fleet-catalog.js';
 
 const $=id=>document.getElementById(id);
@@ -308,7 +308,7 @@ if($('lc-admin')){
   group('已同意、即將取車',upcoming.slice(0,8),r=>reservationCard(r,'todo',false),null);
   group('使用中',inUse,r=>reservationCard(r,'todo',false),null);
   if(!awaiting.length&&!waitingReview.length&&!late.length&&!upcoming.length&&!inUse.length)todo.append(make('p','目前沒有預約或借用中的車輛。','lc-empty'));
-  if(staff.storage){const {usedBytes=0,reservedBytes=0,budgetBytes=0}=staff.storage,storage=make('section',undefined,'lc-storage'),pct=budgetBytes?Math.min(100,Math.round((usedBytes+reservedBytes)/budgetBytes*100)):0;storage.append(make('strong','原始照片儲存量'));const meter=make('div',undefined,'lc-meter');meter.setAttribute('role','img');meter.setAttribute('aria-label',`已使用與預留 ${pct}%`);const fill=make('i');fill.style.width=`${pct}%`;meter.append(fill);storage.append(meter,details('已存原圖',`${(usedBytes/1048576).toFixed(1)} MiB`),details('已預留必要歸還照片',`${(reservedBytes/1048576).toFixed(1)} MiB`),details('應用照片預算',`${(budgetBytes/1048576).toFixed(1)} MiB`));if(budgetBytes&&usedBytes+reservedBytes>=budgetBytes)storage.append(make('p','照片容量已滿。請先由管理者規劃容量；已留存原圖與歷史紀錄不可直接刪除。','error'));todo.append(storage);}
+  if(staff.storage){const {usedBytes=0,reservedBytes=0,budgetBytes=0}=staff.storage,storage=make('section',undefined,'lc-storage'),pct=budgetBytes?Math.min(100,Math.round((usedBytes+reservedBytes)/budgetBytes*100)):0;storage.append(make('strong','原始照片儲存量'));const meter=make('div',undefined,'lc-meter');meter.setAttribute('role','img');meter.setAttribute('aria-label',`已使用與預留 ${pct}%`);const fill=make('i');fill.style.width=`${pct}%`;meter.append(fill);storage.append(meter,details('儲存位置',staff.storage.backend==='drive'?'Google 雲端硬碟':'資料庫'),details('已存原圖',`${(usedBytes/1048576).toFixed(1)} MiB`),details('已預留必要歸還照片',`${(reservedBytes/1048576).toFixed(1)} MiB`),details('應用照片預算',`${(budgetBytes/1048576).toFixed(1)} MiB`));if(budgetBytes&&usedBytes+reservedBytes>=budgetBytes)storage.append(make('p','照片容量已滿：暫停新預約與取車，已借出的車仍可拍照還車。請先由管理者規劃容量；已留存原圖與歷史紀錄不可直接刪除。','error'));todo.append(storage);}
   renderBookings();
   // Fleet.
   const fleet=$('lc-fleet');fleet.replaceChildren();if(!assets.length)fleet.append(make('p','尚未建立任何車輛或配件。','lc-empty'));

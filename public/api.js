@@ -53,13 +53,33 @@ export async function api(path, body, admin=false) {
   if(location.hostname.endsWith('github.io')&&!cfg.apiBase) throw new Error('共用資料服務尚未連接，目前不能登記。');
   return request((cfg.apiBase||'')+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:`Bearer ${await adminToken()}`}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 }
+// Once the database reports Drive storage (017), photo bytes go through the lifecycle-photo Edge Function.
+let photoService=false;
+const photoAction=action=>action==='photo'||action==='photo_read';
+async function photoRequest(action,payload,token,admin){
+  return request(`${cfg.supabaseUrl}/functions/v1/lifecycle-photo`,{method:'POST',timeoutMs:90000,headers:cloudHeaders(admin?await adminToken():undefined),body:JSON.stringify({action,token:admin?null:token,payload,admin})});
+}
 // All lifecycle authority remains in the server/database; client checks only aid input.
 export async function lifecycle(action, payload = {}, token = null, admin = false) {
   if(admin && mfaState?.required) throw Object.assign(new Error('MFA_REQUIRED'), {status:403});
-  if(cloud) return request(`${cfg.supabaseUrl}/rest/v1/rpc/${admin?'lifecycle_admin':'lifecycle'}`, {
-    method:'POST', timeoutMs:60000, headers:cloudHeaders(admin?await adminToken():undefined),
-    body:JSON.stringify(admin?{p_action:action,p_payload:payload}:{p_action:action,p_token:token,p_payload:payload}),
-  });
+  if(cloud) {
+    if(photoAction(action)&&photoService) return photoRequest(action,payload,token,admin);
+    let result;
+    try {
+      result=await request(`${cfg.supabaseUrl}/rest/v1/rpc/${admin?'lifecycle_admin':'lifecycle'}`, {
+        method:'POST', timeoutMs:60000, headers:cloudHeaders(admin?await adminToken():undefined),
+        body:JSON.stringify(admin?{p_action:action,p_payload:payload}:{p_action:action,p_token:token,p_payload:payload}),
+      });
+    } catch(error) {
+      // A page loaded before 017 learns the switch from the database's refusal.
+      if(action==='photo'&&/photo service/i.test(error.message)){photoService=true;return photoRequest(action,payload,token,admin);}
+      throw error;
+    }
+    if(action==='photo_read'&&result?.photo?.driveFileId&&result.photo.data===undefined){photoService=true;return photoRequest(action,payload,token,admin);}
+    const storage=result?.settings?.photoStorage??result?.storage?.backend;
+    if(storage)photoService=storage==='drive';
+    return result;
+  }
   return api(admin?'/api/admin/lifecycle':'/api/lifecycle', admin?{action,payload}:{action,token,payload}, admin);
 }
 export async function login(username,password) {

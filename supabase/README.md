@@ -2,7 +2,24 @@
 
 2026-10-09 正式專案已安裝 001–011，勿重跑。新專案先依序安裝 001–008，再使用 `releases/20261009-lifecycle.sql` 的 009–011 整合交易；後者核對舊資料雜湊並防止重複安裝。正式部署、RLS／grants 與公開 API 讀回見 `docs/LIFECYCLE-DELIVERY-20261008.md`。下列各節保留個別 migration 的設計與操作說明。
 
-新流程原圖總預算為 192 MiB，保留有效借用尚未完成的必要取還車照片額度；幹部 `list.storage` 可查看已用、預留與上限。這不是整個託管資料庫的容量保證，長期使用仍需監控並規劃私有物件儲存、備份及保留政策。
+原圖預算：017 之前存資料庫、192 MiB；017 之後新原圖存 Google 雲端硬碟、1 GiB。016 起只為使用中的車預留尚缺的還車照片；幹部 `list.storage` 可查看儲存位置、已用、預留與上限。這不是整個託管資料庫或雲端硬碟的容量保證，長期使用仍需監控並規劃備份及保留政策。
+
+## 017：原圖改存 Google 雲端硬碟（2026-10-13）
+
+在 016 之後套用，而且**必須先完成下列 1–4 步**，否則社員會無法上傳照片。017 讓 `lifecycle_photos.bytes` 可為空、新增唯一的 `drive_file_id`（每張照片只會存在其中一處）、預算改 1 GiB、`photoStorage` 改為 `drive`，新增只授權 `service_role` 的 `public.lifecycle_photo_service`；`lifecycle('photo')` 改回「Photo uploads use the photo service」。已存在資料庫的照片不搬移、不改寫，照常可讀。前端（`api.js`）看到 `photoStorage: drive` 或上述拒絕訊息就改走 Edge Function，可先發布。
+
+1. Google Cloud Console（用要存照片的 Google 帳號）：建立專案 → 啟用 Google Drive API → OAuth 同意畫面（外部帳號請設為「正式版／In production」；停在「測試」時 refresh token 7 天就失效。只用 `drive.file` 這個非敏感範圍，不需 Google 審查）→ 建立「電腦版應用程式（Desktop app）」OAuth 用戶端。
+2. 在自己的終端執行 `node scripts/google-drive-setup.mjs`，貼上用戶端 ID 與密鑰、在瀏覽器同意授權。它會建立「北科大自由車社 借還車照片」資料夾，並把四個值寫進 Git 忽略的 `supabase/.env.drive`（不印出密鑰）。
+3. `npx supabase login`（本人瀏覽器登入），再 `npx supabase secrets set --env-file supabase/.env.drive --project-ref <project-ref>`，完成後刪除 `supabase/.env.drive`。也可在 Supabase 後台 Edge Functions → Secrets 逐一貼上 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REFRESH_TOKEN`、`GOOGLE_DRIVE_FOLDER_ID`。
+4. `npx supabase functions deploy lifecycle-photo --no-verify-jwt --project-ref <project-ref>`（`supabase/config.toml` 也設了 `verify_jwt = false`：社員只帶 publishable key，授權由資料庫檢查）。函式使用平台自動提供的 `SUPABASE_URL` 與 service role key；專案若停用舊版 JWT 金鑰，平台改提供 `SUPABASE_SECRET_KEYS`，函式兩者皆可。
+5. SQL Editor 執行一次 `migrations/017_google_drive_photos.sql`（重跑會被擋下）。
+6. 驗收：幹部後台「原始照片儲存量」顯示「Google 雲端硬碟」與 1024 MiB；用測試預約實拍一張，確認雲端資料夾出現檔案、借車紀錄可開啟照片。
+
+回復：若函式或 Google 授權出問題，不要刪表；修好密鑰或重新部署函式即可。暫時退回資料庫存放可執行 `create or replace function private.lifecycle_photo_backend() ... select 'database'` 與 `lifecycle_photo_budget()` 改回 201326592；已存 Drive 的照片仍經函式讀取。
+
+## 016：照片容量只算實際用量（2026-10-13）
+
+在 015 之後執行一次 `migrations/016_photo_capacity_accounting.sql`（重跑會被擋下；未套用 015 也會中止），前後端都不必先改。原因：舊算法讓每筆 `reserved` 預約預留 8 張 × 8 MiB，三筆未取車的預約就占滿 192 MiB，新預約被拒。016 重新定義 `lifecycle_storage_json`（只為 `in_use` 預約保留尚缺的還車照片，並回傳 `backend`）、`lifecycle_settings_json`（加 `photoStorage`），新增 `lifecycle_photo_backend`、`lifecycle_photo_budget`、`lifecycle_photo_room`、`lifecycle_photo_gate`，並重建 `lifecycle_member_core`：照片規則集中在 `lifecycle_photo_gate`，取車時必須留得下該車四張還車照片。預算仍為 192 MiB，照片、限制與資料不變。`tests/photo-storage-postgres.test.mjs` 以 PGlite 重現「三筆預約、零張照片就滿」並驗證 016 之後的行為。
 
 ## 015：車輛適合身高（2026-10-12）
 

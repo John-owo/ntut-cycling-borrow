@@ -1,0 +1,5 @@
+# Only used by `supabase functions deploy`; the database is managed through the SQL migrations.
+project_id = "ntut-cycling-borrow"
+
+[functions.lifecycle-photo]
+verify_jwt = false

@@ -1,5 +1,11 @@
 # 資安說明（SECURITY.md）
 
+## 2026-10-13：原圖改存 Google 雲端硬碟（016、017）
+
+新原圖經 Supabase Edge Function `lifecycle-photo` 存入社團 Google 雲端硬碟。函式關閉閘道 JWT 驗證（社員用 publishable key），授權完全交給資料庫：社員上傳／讀取以 service role 呼叫 `public.lifecycle_photo_service`，該函式只授權 `service_role`，依取還車碼雜湊與預約範圍檢查，與 `lifecycle()` 規則相同；幹部讀取沿用呼叫者自己的 Auth session 呼叫 `lifecycle_admin`（仍檢查 allowlist 與 MFA）。函式先驗證類型、檔頭、大小並計算 SHA-256，資料庫預檢通過才上傳 Drive，提交時在共用鎖內重新檢查；被拒或重送多出的檔案會刪除。讀取時核對大小與 SHA-256，不符即拒絕。Drive 檔名只含時間、階段、項目與預約 ID 前 8 碼，不含姓名或學號。
+
+Google OAuth 只要求 `drive.file`（僅能存取本應用建立的檔案）。Client secret、refresh token、資料夾 ID 只存在 Supabase Edge Function secrets；`scripts/google-drive-setup.mjs` 在使用者自己的終端寫入 Git 忽略的 `.env.*` 檔，不印出密鑰。持有 refresh token 者可讀寫該資料夾內本應用的檔案，外洩時請在 Google 帳號撤銷應用授權並重新設定。Drive 檔案不受資料庫的「原始證據不可修改」觸發器保護；資料庫保存的 SHA-256 可發現被改動的檔案，但無法阻止帳號擁有者在雲端硬碟刪除。
+
 ## 2026-10-09：自助預約（012）
 
 依社團決定移除幹部核發資格碼的要求：匿名 `apply` 以學號、姓名建立「待幹部同意」的預約，取車前必須由幹部同意，幹部仍可停用學號。這代表任何知道借車頁的人都能以他人學號送出預約並暫時占用時段；風險以幹部同意、同學號一筆進行中預約、共用登記節流（每來源 30 次／10 分鐘及全站上限）與幹部拒絕處理。社團已接受此取捨（車庫為開放式空間，系統不是實體防盜）。
