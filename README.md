@@ -64,7 +64,7 @@ node server/start.mjs
 1. 新的專用 Supabase 專案先依序執行 migrations 001–008，再套用 `supabase/releases/20261009-lifecycle.sql`（009–011 整合交易）。既有正式專案已安裝，不可重跑、刪表或拿真實借單測試；整合交易含防重跑與舊資料雜湊檢查。
 2. 在 Supabase Auth 建立兩位幹部各自的登入身分，將各自 UUID 加入 `private.admins`。詳見 `supabase/README.md`。一般註冊用戶不會自動取得管理權；前端沒有幹部自行註冊功能。關閉不需要的公開 Auth signup。
 3. GitHub 儲存庫的 Actions variables 設定 `SUPABASE_URL` 與 `SUPABASE_PUBLISHABLE_KEY`（公開 publishable／anon key，不是 secret/service_role key）。私人金鑰與資料庫密碼不能進 GitHub Pages。
-4. GitHub Pages 的來源選 GitHub Actions。workflow 只發布 allowlist 打包的 `.pages-site/`，不包含本機資料庫、SQL source 或未列入的歷史圖片；正式網站無需 Node 伺服器。
+4. GitHub Pages 的來源選 GitHub Actions。workflow 會發布 `node scripts/package-pages.mjs` 產生的 `.pages-site/`，不直接發布整個 `public/`；不包含本機資料庫或 SQL source，正式網站無需 Node 伺服器。
 5. 登入網站管理端，填實際總車數、社團联絡入口。先用隔離測試專案驗證登入、匿名隔離、登記、跨裝置查詢、交車與收車，再開放社員使用。
 
 尚未設定兩個公開變數時，CI 執行測試、跳過正式發布，不以空後端交付可用系統。若需要本機檢查雲端前端，把 `public/config.js` 設成 Supabase 模式；只可放公開連線資訊。
