@@ -60,7 +60,7 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     await staff('member', { studentId: 'S002', name: '測試社員二', contact: 'test', validUntil: until, active: true, token: t2, reason: '測試核對' });
     assert.equal((await member('reserve', t1, { requestId: uid(), assetIds: [asset.id], start: new Date(Date.now() + 500).toISOString(), end: new Date(Date.now() + 3600000).toISOString() })).status, 409);
     const settings = (await staff('settings', { location: '測試社辦', terms: '測試借車規範' })).settings;
-    assert.deepEqual(Object.keys(settings).sort(), ['location', 'terms', 'termsVersion']);
+    assert.deepEqual(Object.keys(settings).sort(), ['location', 'photoStorage', 'terms', 'termsVersion']);
     assert.equal((await staff('settings', { location: '測試社辦', terms: '測試借車規範', extra: 'x' })).status, 400);
     assert.equal((await staff('settings', { location: '測試社辦' })).status, 400);
     const startAt = new Date(Date.now() + 700).toISOString(), endAt = new Date(Date.now() + 3600000).toISOString();
@@ -164,42 +164,48 @@ test('SQLite HTTP serializes competing reservations and blocks adjacent pickup d
   } finally { await app?.close(); cleanupTestDir(dir, 'bike-lifecycle-race-'); }
 });
 
-test('SQLite photo budget reserves mandatory slots and releases reservations without touching originals', async () => {
+test('SQLite photo budget counts stored photos and protects the return photos of bikes that are out', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'bike-lifecycle-budget-'));
   let app, base, bearer;
   const call = async (path, body, admin = false) => { const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(admin ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) }); return { status: response.status, ...await response.json() }; };
   const staff = (action, payload = {}) => call('/api/admin/lifecycle', { action, payload }, true);
   const member = (action, token, payload = {}) => call('/api/lifecycle', { action, token, payload });
-  const MiB = 1024 * 1024;
+  const MiB = 1024 * 1024, all = { frame: true, tires: true, brakes: true, gears: true, accessories: true }, png = drawnPng();
   try {
-    app = createApp({ dbPath: join(dir, 'db.sqlite') }); await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); base = `http://127.0.0.1:${app.server.address().port}`;
+    app = createApp({ dbPath: join(dir, 'db.sqlite'), rateLimit: 1000 }); await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); base = `http://127.0.0.1:${app.server.address().port}`;
     app.addAdmin('officer', 'test-password-123'); bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
-    const staged = (await staff('asset', { code: 'B-STAGED', name: '待盤點車', kind: 'bike', state: 'inspection', reason: '新車盤點' })).asset;
-    assert.equal((await staff('asset', { id: staged.id, code: staged.code, name: staged.name, kind: staged.kind, state: 'available', reason: '盤點完成' })).status, 200);
-    const other = (await staff('asset', { code: 'B-OTHER', name: '第二台車', kind: 'bike', state: 'available', reason: '盤點完成' })).asset;
-    await staff('settings', { location: '測試', instructions: '測試', terms: '測試規範' });
-    const token1 = randomBytes(32).toString('hex'), token2 = randomBytes(32).toString('hex'), validUntil = new Date(Date.now() + 86400000).toISOString();
-    const owner = (await staff('member', { studentId: 'BUDGET1', name: '容量測試一', contact: 'test', validUntil, active: true, token: token1, reason: '測試' })).member;
-    await staff('member', { studentId: 'BUDGET2', name: '容量測試二', contact: 'test', validUntil, active: true, token: token2, reason: '測試' });
+    const bikes = [];
+    for (const code of ['B-ONE', 'B-TWO', 'B-THREE']) bikes.push((await staff('asset', { code, name: `容量車 ${code}`, kind: 'bike', state: 'available', reason: '盤點完成' })).asset);
+    const termsVersion = (await staff('settings', { location: '測試', instructions: '測試', terms: '測試規範' })).settings.termsVersion;
+    const tokens = [], validUntil = new Date(Date.now() + 86400000).toISOString();
+    for (let i = 1; i <= 3; i++) { tokens.push(randomBytes(32).toString('hex')); await staff('member', { studentId: `BUDGET${i}`, name: `容量測試${i}`, contact: 'test', validUntil, active: true, token: tokens[i - 1], reason: '測試' }); }
     // Metadata-only synthetic history exercises capacity arithmetic without allocating huge image files.
-    const oldId = randomUUID(), past = new Date(Date.now() - 86400000).toISOString();
-    app.db.prepare("INSERT INTO lifecycle_reservations(id,memberId,borrower,start,end,status,createdAt,returnedAt) VALUES(?,?,?,?,?,'returned',?,?)").run(oldId, owner.id, JSON.stringify({ studentId: owner.studentId, name: owner.name, contact: owner.contact }), past, past, past, past);
-    app.db.prepare('INSERT INTO lifecycle_photos VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), oldId, staged.id, 'return', 'left', 'image/jpeg', 120 * MiB, 'synthetic', past, Buffer.of(1));
+    const historyId = randomUUID(), past = new Date(Date.now() - 86400000).toISOString(), owner = (await staff('list')).members[0];
+    app.db.prepare("INSERT INTO lifecycle_reservations(id,memberId,borrower,start,end,status,createdAt,returnedAt) VALUES(?,?,?,?,?,'returned',?,?)").run(historyId, owner.id, JSON.stringify({ studentId: owner.studentId, name: owner.name, contact: owner.contact }), past, past, past, past);
+    const synthetic = (reservationId, assetId, phase, slot, size) => app.db.prepare('INSERT INTO lifecycle_photos VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), reservationId, assetId, phase, slot, 'image/jpeg', size, 'synthetic', new Date().toISOString(), Buffer.of(1));
+    synthetic(historyId, bikes[0].id, 'return', 'left', 96 * MiB);
     const start = new Date(Date.now() + 300).toISOString(), end = new Date(Date.now() + 3600000).toISOString();
-    const first = await member('reserve', token1, { requestId: randomUUID(), assetIds: [staged.id], start, end });
-    assert.equal(first.status, 200);
-    let usage = (await staff('list')).storage;
-    assert.deepEqual(usage, { usedBytes: 120 * MiB, reservedBytes: 64 * MiB, budgetBytes: 192 * MiB, maxPhotoBytes: 8 * MiB });
-    assert.equal((await member('reserve', token2, { requestId: randomUUID(), assetIds: [other.id], start, end })).status, 409);
+    const booked = [];
+    for (let i = 0; i < 3; i++) { const result = await member('reserve', tokens[i], { requestId: randomUUID(), assetIds: [bikes[i].id], start, end }); assert.equal(result.status, 200, 'future bookings reserve no photo space'); booked.push(result.reservation); }
+    assert.deepEqual((await staff('list')).storage, { usedBytes: 96 * MiB, reservedBytes: 0, budgetBytes: 192 * MiB, maxPhotoBytes: 8 * MiB, backend: 'database' });
     await delay(Math.max(0, Date.parse(start) - Date.now() + 20));
-    const syntheticPhoto = slot => app.db.prepare('INSERT INTO lifecycle_photos VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), first.reservation.id, staged.id, 'pickup', slot, 'image/jpeg', 8 * MiB, 'synthetic', new Date().toISOString(), Buffer.of(1));
-    syntheticPhoto('left'); syntheticPhoto('left');
+    for (const slot of ['left', 'right', 'drivetrain', 'damage']) synthetic(booked[0].id, bikes[0].id, 'pickup', slot, 8 * MiB);
+    const pickup = { requestId: randomUUID(), reservationId: booked[0].id, checks: all, notes: '', signature: { name: '容量測試1', accepted: true, termsVersion, image: `data:image/png;base64,${png}` } };
+    assert.equal((await member('pickup', tokens[0], pickup)).status, 200);
+    let usage = (await staff('list')).storage;
+    assert.equal(usage.usedBytes, 128 * MiB); assert.equal(usage.reservedBytes, 32 * MiB, 'a bike that is out keeps room for four return photos');
+    synthetic(historyId, bikes[0].id, 'return', 'right', 8 * MiB);
+    const photo = (token, reservation, bike, phase, slot) => member('photo', token, { requestId: randomUUID(), reservationId: reservation.id, assetId: bike.id, phase, slot, mime: 'image/png', data: png });
+    assert.equal((await photo(tokens[1], booked[1], bikes[1], 'pickup', 'left')).status, 409, 'a pickup photo may not take the return room of the bike that is out');
+    assert.equal((await photo(tokens[0], booked[0], bikes[0], 'return', 'left')).status, 200, 'return photos of a bike that is out always fit');
     usage = (await staff('list')).storage;
-    assert.equal(usage.usedBytes + usage.reservedBytes, 192 * MiB);
-    assert.equal(usage.reservedBytes, 56 * MiB, 'second image for the same slot does not release return or pickup headroom');
-    assert.equal((await member('photo', token1, { requestId: randomUUID(), reservationId: first.reservation.id, assetId: staged.id, phase: 'pickup', slot: 'left', mime: 'image/png', data: drawnPng() })).status, 409);
-    assert.equal((await member('cancel', token1, { requestId: randomUUID(), reservationId: first.reservation.id, reason: '容量測試取消' })).status, 200);
+    assert.equal(usage.reservedBytes, 24 * MiB); assert.ok(usage.usedBytes + usage.reservedBytes <= usage.budgetBytes);
+    synthetic(historyId, bikes[0].id, 'return', 'drivetrain', 32 * MiB - Buffer.from(png, 'base64').length);
+    assert.equal((await photo(tokens[0], booked[0], bikes[0], 'return', 'left')).status, 409, 'an extra photo for a covered slot needs real free space');
+    for (const slot of ['right', 'drivetrain', 'damage']) assert.equal((await photo(tokens[0], booked[0], bikes[0], 'return', slot)).status, 200);
+    assert.equal((await member('return', tokens[0], { requestId: randomUUID(), reservationId: booked[0].id, checks: all, notes: '', abnormal: false })).status, 200);
     assert.equal((await staff('list')).storage.reservedBytes, 0);
-    assert.equal((await staff('list')).storage.usedBytes, 136 * MiB, 'historical originals remain counted');
+    assert.equal((await member('cancel', tokens[2], { requestId: randomUUID(), reservationId: booked[2].id, reason: '容量測試取消' })).status, 200);
+    assert.ok((await staff('list')).storage.usedBytes > 160 * MiB, 'historical originals remain counted');
   } finally { await app?.close(); cleanupTestDir(dir, 'bike-lifecycle-budget-'); }
 });

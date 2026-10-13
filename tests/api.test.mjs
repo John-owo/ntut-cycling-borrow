@@ -171,3 +171,29 @@ test('Scheduled registration preserves proposed dates and multiline notes; offic
  const result=await c.api.api('/api/admin/confirm-schedule',{id:7},true);
  assert.equal(result.record.scheduleConfirmedAt,'2026-10-01T00:00:00Z');c.done();
 });
+
+test('Photo bytes switch to the Drive photo function once the database reports Drive storage',async t=>{
+ const c=await client(t),token='b'.repeat(64),photo={requestId:'r1',reservationId:'res',assetId:'bike',phase:'pickup',slot:'left',mime:'image/png',data:'AAAA'};
+ const range={start:'2026-10-13T00:00:00Z',end:'2026-10-20T00:00:00Z'};
+ c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'calendar',p_token:null,p_payload:range},result:{assets:[],bookings:[],settings:{photoStorage:'database'}}});
+ await c.api.lifecycle('calendar',range);
+ // A page loaded before 017 learns the switch from the database refusal, without asking the member again.
+ c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'photo',p_token:token,p_payload:photo},status:400,result:{code:'P0001',message:'Photo uploads use the photo service'}});
+ c.expect({path:'/functions/v1/lifecycle-photo',body:{action:'photo',token,payload:photo,admin:false},result:{photo:{id:'p1'}}});
+ assert.equal((await c.api.lifecycle('photo',photo,token)).photo.id,'p1');
+ c.expect({path:'/functions/v1/lifecycle-photo',body:{action:'photo_read',token,payload:{id:'p1'},admin:false},result:{photo:{id:'p1',data:'AAAA'}}});
+ assert.equal((await c.api.lifecycle('photo_read',{id:'p1'},token)).photo.data,'AAAA');
+ c.done();
+});
+
+test('Photo reads follow the reported storage and recover from a Drive record read through the database',async t=>{
+ const c=await client(t),token='c'.repeat(64);
+ c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'photo_read',p_token:token,p_payload:{id:'p0'}},result:{photo:{id:'p0',driveFileId:'drive_file_0001'}}});
+ c.expect({path:'/functions/v1/lifecycle-photo',body:{action:'photo_read',token,payload:{id:'p0'},admin:false},result:{photo:{id:'p0',data:'BBBB'}}});
+ assert.equal((await c.api.lifecycle('photo_read',{id:'p0'},token)).photo.data,'BBBB');
+ c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'me',p_token:token,p_payload:{}},result:{reservations:[],settings:{photoStorage:'database'}}});
+ await c.api.lifecycle('me',{},token);
+ c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'photo_read',p_token:token,p_payload:{id:'p2'}},result:{photo:{id:'p2',data:'CCCC'}}});
+ assert.equal((await c.api.lifecycle('photo_read',{id:'p2'},token)).photo.data,'CCCC');
+ c.done();
+});
