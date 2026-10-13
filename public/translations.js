@@ -1,4 +1,5 @@
 export const english = {
+  "隱私權政策": "Privacy policy",
   "預計時間格式不正確": "The proposed date and time format is invalid",
   "確認車況時間不可晚於租用時間，歸還時間須晚於租用時間": "The inspection must be at or before borrowing, and return must be after borrowing",
   "租用／歸還備註格式不正確": "Borrowing or return notes have an invalid format",
