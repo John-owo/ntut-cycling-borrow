@@ -6,7 +6,7 @@
 
 幹部後台曾在一張照片都沒有時顯示 192 MiB 已滿：舊算法讓每筆「預約中」的借車從送出當下就預留 8 張必拍照片 × 每張上限 8 MiB ＝ 64 MiB，三筆預約（2026-10-13 正式站正好三筆已同意、尚未取車）就占滿 192 MiB，第四筆預約會被拒絕。`supabase/migrations/016_photo_capacity_accounting.sql` 改為只計已存照片，加上「已借出（使用中）車輛」尚缺的還車照片預留（每台最多 32 MiB）；未來的預約不再預占空間。取車照片與取車本身須留得下這台車的四張還車照片，所以已借出的車一定拍得了還車照片。
 
-`017_google_drive_photos.sql` 與 Supabase Edge Function `supabase/functions/lifecycle-photo/` 把新上傳的原圖存到社團 Google 雲端硬碟，照片預算改為 1 GiB。資料庫只記檔案 ID、大小與 SHA-256；讀取時核對雜湊。017 之前存在資料庫的照片原地保留、照常可讀並計入用量。前端依資料庫回報的 `photoStorage` 自動切換，可在 017 之前發布。上線順序（Google 授權、密鑰、部署函式、套用 017）見 `supabase/README.md`。本機 Node 版仍把照片存 SQLite（192 MiB），算法與雲端相同。
+`017_google_drive_photos.sql` 與 Supabase Edge Function `supabase/functions/lifecycle-photo/` 把新上傳的原圖存到社團 Google 雲端硬碟，照片預算改為 1 GiB。資料庫只記檔案 ID、大小與 SHA-256；讀取時核對雜湊。017 之前存在資料庫的照片原地保留、照常可讀並計入用量。前端依資料庫回報的 `photoStorage` 自動切換，可在 017 之前發布。上線順序（Google 授權、密鑰、部署函式、套用 017）見 `supabase/README.md`。本機 Node 版仍把照片存 SQLite（192 MiB），算法與雲端相同。正式部署與讀回證據見 `docs/PHOTO-STORAGE-DELIVERY-20261013.md`。
 
 ## 車輛適合身高、幹部看誰借了哪台（2026-10-12）
 
