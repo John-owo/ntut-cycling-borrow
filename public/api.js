@@ -59,6 +59,23 @@ const photoAction=action=>action==='photo'||action==='photo_read';
 async function photoRequest(action,payload,token,admin){
   return request(`${cfg.supabaseUrl}/functions/v1/lifecycle-photo`,{method:'POST',timeoutMs:90000,headers:cloudHeaders(admin?await adminToken():undefined),body:JSON.stringify({action,token:admin?null:token,payload,admin})});
 }
+// The database refuses in English; members read the local server's zh wording instead.
+const refusals={
+  'Member already has two active reservations':'同一學號最多同時兩筆有效預約或借用',
+  'Member already has a reservation in this time':'與你已有的預約時段重疊，請改選其他時間',
+  'Borrow terms must be accepted':'請先詳細閱讀並同意借車規範',
+  'Borrow terms changed; read them again':'借車規範已更新，請重新閱讀並同意',
+  'Reservation conflict':'車輛或配件不可預約',
+  'Asset unavailable':'車輛或配件不可預約',
+  'Invalid reservation window':'預約時間不正確',
+  'Membership inactive':'社員資格未生效或已過期',
+  'Member already has an active loan':'已有使用中車輛',
+  'Member has an overdue loan; return it first':'你有逾期未還的車，請先歸還再預約',
+  'Existing legacy loan or application':'已有有效借車或登記紀錄',
+  // Only a page cached from before the latest migration sends an outdated form.
+  'Invalid application':'預約表單已更新，請重新整理頁面後再送出',
+};
+export const localRefusal=error=>{if(Object.hasOwn(refusals,error?.message))error.message=refusals[error.message];return error;};
 // All lifecycle authority remains in the server/database; client checks only aid input.
 export async function lifecycle(action, payload = {}, token = null, admin = false) {
   if(admin && mfaState?.required) throw Object.assign(new Error('MFA_REQUIRED'), {status:403});
@@ -73,7 +90,7 @@ export async function lifecycle(action, payload = {}, token = null, admin = fals
     } catch(error) {
       // A page loaded before 017 learns the switch from the database's refusal.
       if(action==='photo'&&/photo service/i.test(error.message)){photoService=true;return photoRequest(action,payload,token,admin);}
-      throw error;
+      throw localRefusal(error);
     }
     if(action==='photo_read'&&result?.photo?.driveFileId&&result.photo.data===undefined){photoService=true;return photoRequest(action,payload,token,admin);}
     const storage=result?.settings?.photoStorage??result?.storage?.backend;

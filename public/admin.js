@@ -1,5 +1,5 @@
 import {confirmLocalized} from './i18n.js?v=overdue1017';
-import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date,appointmentDetails,adminMfaState,loadMfaState,enrollMfa,verifyMfa} from './api.js?v=photo1013';
+import {api,login,logout,clearAdmin,currentAdmin,cloud,node,date,appointmentDetails,adminMfaState,loadMfaState,enrollMfa,verifyMfa} from './api.js?v=overdue1017';
 // GitHub Pages cannot send frame-ancestors, so the officer desk refuses to run inside another site's frame (clickjacking defense in depth).
 if(window.self!==window.top){document.documentElement.hidden=true;try{window.top.location.replace(location.href);}catch{}throw new Error('Officer desk must not be framed');}
 const $=id=>document.getElementById(id);let data=null,filter='waiting',refreshing=false,lastSuccess=0,pending=null,mutating=false,authGeneration=0,refreshTask=null;
