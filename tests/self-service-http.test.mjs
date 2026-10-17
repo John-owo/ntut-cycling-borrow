@@ -34,10 +34,11 @@ test('SQLite self-service booking: applicant key, officer approval, scoped acces
     bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
     await call('/api/admin/settings', { total: 3, contactUrl: '' }, true);
     const policy = (await staff('settings', { location: '測試社辦', instructions: '測試取車', terms: '測試規範' })).settings;
+    const consent = { accepted: true, termsVersion: policy.termsVersion };
     const bike = (await staff('asset', { code: 'B-1', name: '測試車', kind: 'bike', state: 'available', reason: '盤點' })).asset;
     const other = (await staff('asset', { code: 'B-2', name: '測試車二', kind: 'bike', state: 'available', reason: '盤點' })).asset;
     const k1 = key(), k2 = key();
-    const apply = { requestId: randomUUID(), studentId: 't111', name: '自助社員', assetIds: [bike.id], start: new Date(Date.now() + 600).toISOString(), end: new Date(Date.now() + 3600000).toISOString(), key: k1 };
+    const apply = { requestId: randomUUID(), studentId: 't111', name: '自助社員', assetIds: [bike.id], start: new Date(Date.now() + 600).toISOString(), end: new Date(Date.now() + 3600000).toISOString(), key: k1, ...consent };
     const first = await member('apply', null, apply);
     assert.equal(first.status, 200, JSON.stringify(first));
     assert.equal(first.reservation.approval, 'pending'); assert.equal(first.reservation.selfService, true);
@@ -45,13 +46,13 @@ test('SQLite self-service booking: applicant key, officer approval, scoped acces
     assert.equal(JSON.stringify(first).includes(k1), false); assert.equal(JSON.stringify(first).includes('accessHash'), false);
     assert.equal((await member('apply', null, apply)).reservation.id, first.reservation.id, 'retry is idempotent');
     assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), key: k2 })).status, 409, 'slot already held');
-    assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), assetIds: [other.id], key: k2 })).status, 409, 'one active booking per student');
+    assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), assetIds: [other.id], key: k2 })).status, 409, 'own bookings may not overlap');
     assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), studentId: 'bad id!', key: k2 })).status, 400);
     const calendar = await member('calendar', null, { start: new Date().toISOString(), end: new Date(Date.now() + 86400000).toISOString() });
     assert.equal(calendar.bookings[0].pending, true); assert.equal(JSON.stringify(calendar).includes('自助社員'), false);
     const mine = await member('me', k1);
     assert.equal(mine.reservations.length, 1); assert.equal(mine.reservations[0].id, first.reservation.id);
-    assert.equal((await member('reserve', k1, { requestId: randomUUID(), assetIds: [other.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString() })).status, 403);
+    assert.equal((await member('reserve', k1, { requestId: randomUUID(), assetIds: [other.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString(), ...consent })).status, 403);
     await delay(700);
     const photo = slot => ({ requestId: randomUUID(), reservationId: first.reservation.id, assetId: bike.id, phase: 'pickup', slot, mime: 'image/png', data: png });
     assert.equal((await member('photo', k1, photo('left'))).status, 409, 'pickup photos wait for approval');
@@ -75,7 +76,7 @@ test('SQLite self-service booking: applicant key, officer approval, scoped acces
     assert.equal((await member('photo_read', k3, { id: photos[0].id })).photo.data, png);
     // A second applicant's key cannot read the first booking's evidence.
     const k4 = key();
-    const second = await member('apply', null, { requestId: randomUUID(), studentId: 'T222', name: '另一位', assetIds: [other.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString(), key: k4 });
+    const second = await member('apply', null, { requestId: randomUUID(), studentId: 'T222', name: '另一位', assetIds: [other.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString(), key: k4, ...consent });
     assert.equal(second.status, 200);
     assert.equal((await member('photo_read', k4, { id: photos[0].id })).status, 404);
     assert.equal((await member('return', k4, { requestId: randomUUID(), reservationId: first.reservation.id, checks: all, notes: '', abnormal: false })).status, 404);
@@ -86,7 +87,7 @@ test('SQLite self-service booking: applicant key, officer approval, scoped acces
     // Officers can still block a student ID.
     const blocked = list.members.find(m => m.studentId === 'T111');
     await staff('member', { id: blocked.id, studentId: 'T111', name: '自助社員', contact: blocked.contact || '-', validUntil: blocked.validUntil, active: false, reason: '停權測試' });
-    assert.equal((await member('apply', null, { requestId: randomUUID(), studentId: 'T111', name: '自助社員', assetIds: [bike.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString(), key: key() })).status, 403);
+    assert.equal((await member('apply', null, { requestId: randomUUID(), studentId: 'T111', name: '自助社員', assetIds: [bike.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString(), key: key(), ...consent })).status, 403);
   } finally {
     app.server.closeAllConnections(); await app.close();
     assert.equal(resolve(dirname(dir)), resolve(tmpdir())); assert.ok(basename(dir).startsWith('bike-self-service-'));
