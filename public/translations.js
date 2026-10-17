@@ -505,4 +505,6 @@ Object.assign(english, {
   "與你已有的預約時段重疊，請改選其他時間": "This overlaps one of your bookings; choose another time",
   "請先詳細閱讀並同意借車規範": "Read and accept the borrowing rules first",
   "借車規範已更新，請重新閱讀並同意": "The borrowing rules were updated; read and accept them again",
+  "你有逾期未還的車，請先歸還再預約。": "You have an overdue bike. Return it before booking again.",
+  "你有逾期未還的車，請先歸還再預約": "You have an overdue bike. Return it before booking again",
 });

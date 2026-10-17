@@ -8,7 +8,7 @@ import {buildLifecycleRelease} from '../scripts/lifecycle-release.mjs';
 const sql=file=>readFileSync(new URL('../supabase/migrations/'+file,import.meta.url),'utf8');
 const key=()=>randomBytes(32).toString('hex'),iso=ms=>new Date(Date.now()+ms).toISOString(),hour=3600000;
 
-async function setup({install=true}={}){
+async function setup({install=true,overdue=false}={}){
  const db=new PGlite(),officer=randomUUID(),session=randomUUID();
  let queue=Promise.resolve();
  const as=(role,text,args)=>{const run=queue.then(async()=>{await db.exec(`set role ${role}`);try{return (await db.query(`select ${text} as value`,args)).rows[0].value;}finally{await db.exec('reset role');}});queue=run.catch(()=>{});return run;};
@@ -24,6 +24,7 @@ async function setup({install=true}={}){
  await db.exec(buildLifecycleRelease());
  for(const file of ['012_self_service_booking.sql','013_remove_pickup_instructions.sql','014_close_legacy_queue.sql','015_bike_rider_height.sql','016_photo_capacity_accounting.sql','017_google_drive_photos.sql'])await db.exec(sql(file));
  if(install)await db.exec(sql('018_two_bookings_terms_consent.sql'));
+ if(overdue)await db.exec(sql('019_block_booking_while_overdue.sql'));
  await db.query('insert into auth.users values($1,$2)',[officer,'fixture@example.test']);
  await db.query('insert into private.admins values($1)',[officer]);await db.query('insert into auth.sessions values($1,$2,null)',[session,officer]);
  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:officer,session_id:session,aal:'aal2'})]);
@@ -106,4 +107,34 @@ test('018 still keeps one bike in hand: the second booking cannot be picked up w
   const pickup=await rpc('pickup',{requestId:randomUUID(),reservationId:second.reservation.id,checks,notes:'',signature:{name:'Rider P1',accepted:true,termsVersion:policy.termsVersion,image:signature}},second.key);
   assert.match(pickup.message,/active loan/,JSON.stringify(pickup));
  }finally{await db.close();}
+});
+
+test('019 refuses a new booking while the student has an overdue bike, and lifts it on return',async()=>{
+ const {db,rpc,admin,policy,bikes,apply}=await setup({overdue:true});
+ try{
+  await assert.rejects(db.exec(sql('019_block_booking_while_overdue.sql')),/already installed/);await db.exec('rollback');
+  const out=(await apply('O1',bikes[0],hour,2*hour)).reservation;
+  // Fixture: the bike went out and its return time has passed.
+  const overdue=()=>db.query("update private.lifecycle_reservations set status='in_use',picked_up_at=now()-interval '3 hours',starts_at=now()-interval '3 hours',ends_at=now()-interval '1 hour' where id=$1",[out.id]);
+  await overdue();
+  assert.match((await apply('o1',bikes[1],3*hour,4*hour)).message,/overdue loan/);
+  assert.ok((await apply('O2',bikes[1],3*hour,4*hour)).reservation,'another student is unaffected');
+  // A bike that is out but not yet due does not block a later booking.
+  await db.query("update private.lifecycle_reservations set ends_at=now()+interval '30 minutes' where id=$1",[out.id]);
+  assert.ok((await apply('O1',bikes[2],2*hour,3*hour)).reservation);
+  await db.query("update private.lifecycle_reservations set status='returned',returned_at=now() where id=$1",[out.id]);
+  assert.ok((await apply('O1',bikes[3],5*hour,6*hour)).reservation,'returning the bike lifts the block');
+  // Member-token reservations follow the same rule.
+  const token=key();
+  const member=(await admin('member',{studentId:'M9',name:'Member nine',contact:'ig',validUntil:iso(9*24*hour),active:true,token,reason:'Verified'})).member;
+  const reserve=(bike,start,end)=>rpc('reserve',{requestId:randomUUID(),assetIds:[bike.id],start:iso(start),end:iso(end),accepted:true,termsVersion:policy.termsVersion},token);
+  const held=(await reserve(bikes[0],8*hour,9*hour)).reservation;
+  await db.query("update private.lifecycle_reservations set status='in_use',starts_at=now()-interval '3 hours',ends_at=now()-interval '1 hour' where id=$1 and member_id=$2",[held.id,member.id]);
+  assert.match((await reserve(bikes[1],10*hour,11*hour)).message,/overdue loan/);
+ }finally{await db.close();}
+});
+
+test('019 refuses to install before 018',async()=>{
+ const {db}=await setup({install:false});
+ try{await assert.rejects(db.exec(sql('019_block_booking_while_overdue.sql')),/Apply 018 before 019/);}finally{await db.close();}
 });
