@@ -1,4 +1,4 @@
-import {english} from './translations.js?v=fit1012';
+import {english} from './translations.js?v=terms1017';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
@@ -26,6 +26,8 @@ const patterns=[
  [/^預計歸還：(.+)。這只是提醒，實際收車後才更新數量。$/,m=>`Expected return: ${m[1]}. Reminder only; the count changes after receipt is confirmed.`],
  [/^重試確認歸還 (\d+) 台$/,m=>`Retry return of ${m[1]} bikes`],
  [/^確認已實際收到 (\d+) 台既有借用的社車？請核對原紙本紀錄。$/,m=>`Confirm receipt of ${m[1]} opening-loan bikes? Check the original paper records.`],
+ [/^規範版本 ([a-f0-9]+)$/,m=>`Rules version ${m[1]}`],
+ [/^與你已有的預約時段重疊（(.+)），請改選其他時間。$/,m=>`This overlaps your booking (${m[1]}); choose another time.`],
  [/^(確認聯絡與時間|確認借出|確認歸還|取消登記)已保存。$/,m=>`${english[m[1]]}: saved.`],
  [/^(.+) · (.+) · (確認聯絡與時間|確認借出|確認歸還|取消登記|lend|return|cancel)$/,m=>`${m[1]} · ${m[2]} · ${english[m[3]]||m[3]}`],
  [/^(.+) · (.+) · 確認既有借用歸還 (.+) 台$/,m=>`${m[1]} · ${m[2]} · Opening-loan return: ${m[3]} bikes`],

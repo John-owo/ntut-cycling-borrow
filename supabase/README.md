@@ -4,6 +4,12 @@
 
 原圖預算：017 之前存資料庫、192 MiB；017 之後新原圖存 Google 雲端硬碟、1 GiB。016 起只為使用中的車預留尚缺的還車照片；幹部 `list.storage` 可查看儲存位置、已用、預留與上限。這不是整個託管資料庫或雲端硬碟的容量保證，長期使用仍需監控並規劃備份及保留政策。
 
+## 018：同一學號兩筆預約、預約前同意借車規範（2026-10-17）
+
+在 017 之後執行一次 `migrations/018_two_bookings_terms_consent.sql`（重跑會被擋下；未套用 017 也會中止）。內容：`lifecycle_reservations` 新增可為空的 `terms_version`、`terms_accepted_at`（兩者同時有值或同時為空，既有預約為空）；新增 `lifecycle_consent`（`accepted` 必須為 true、`termsVersion` 必須等於目前版本）與 `lifecycle_member_window`（同一社員最多兩筆 `reserved`／`in_use`／`inspection`，自己的 `reserved`／`in_use` 時段不得重疊）；重建 `lifecycle_settings_json`（加 `bookingConsent: true`）、`lifecycle_reservation_json`（加 `consent`）、`lifecycle_apply_core` 與 `lifecycle_member_core`，`apply`／`reserve` 多收 `accepted`、`termsVersion` 兩個欄位。取車「已有使用中車輛」的限制與簽署不變。
+
+發布順序：**先發布前端，再套用 018。** 新前端一律要求讀完規範才能填表，但只有在資料庫回報 `bookingConsent` 時才送出同意欄位，所以在 018 之前也能正常預約。套用 018 之後，仍開著舊版頁面（快取）的人送出預約會收到「Invalid application」，重新整理即可。驗收：用合成學號預約一筆，幹部清單的該筆預約應有 `consent`；同一學號第三筆或時段重疊的預約應被拒絕。`tests/booking-limits-postgres.test.mjs` 以 PGlite 套用 001–018 驗證；這不代表託管環境的多連線實測。
+
 ## 017：原圖改存 Google 雲端硬碟（2026-10-13）
 
 在 016 之後套用，而且**必須先完成下列 1–4 步**，否則社員會無法上傳照片。017 讓 `lifecycle_photos.bytes` 可為空、新增唯一的 `drive_file_id`（每張照片只會存在其中一處）、預算改 1 GiB、`photoStorage` 改為 `drive`，新增只授權 `service_role` 的 `public.lifecycle_photo_service`；`lifecycle('photo')` 改回「Photo uploads use the photo service」。已存在資料庫的照片不搬移、不改寫，照常可讀。前端（`api.js`）看到 `photoStorage: drive` 或上述拒絕訊息就改走 Edge Function，可先發布。
