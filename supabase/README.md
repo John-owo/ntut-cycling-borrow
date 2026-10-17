@@ -8,7 +8,7 @@
 
 在 017 之後執行一次 `migrations/018_two_bookings_terms_consent.sql`（重跑會被擋下；未套用 017 也會中止）。內容：`lifecycle_reservations` 新增可為空的 `terms_version`、`terms_accepted_at`（兩者同時有值或同時為空，既有預約為空）；新增 `lifecycle_consent`（`accepted` 必須為 true、`termsVersion` 必須等於目前版本）與 `lifecycle_member_window`（同一社員最多兩筆 `reserved`／`in_use`／`inspection`，自己的 `reserved`／`in_use` 時段不得重疊）；重建 `lifecycle_settings_json`（加 `bookingConsent: true`）、`lifecycle_reservation_json`（加 `consent`）、`lifecycle_apply_core` 與 `lifecycle_member_core`，`apply`／`reserve` 多收 `accepted`、`termsVersion` 兩個欄位。取車「已有使用中車輛」的限制與簽署不變。
 
-發布順序：**先發布前端，再套用 018。** 新前端一律要求讀完規範才能填表，但只有在資料庫回報 `bookingConsent` 時才送出同意欄位，所以在 018 之前也能正常預約。套用 018 之後，仍開著舊版頁面（快取）的人送出預約會收到「Invalid application」，重新整理即可。驗收：用合成學號預約一筆，幹部清單的該筆預約應有 `consent`；同一學號第三筆或時段重疊的預約應被拒絕。`tests/booking-limits-postgres.test.mjs` 以 PGlite 套用 001–018 驗證；這不代表託管環境的多連線實測。
+發布順序：**先發布前端，再套用 018。** 新前端一律要求讀完規範才能填表，但只有在資料庫回報 `bookingConsent` 時才送出同意欄位，所以在 018 之前也能正常預約。套用 018 之後，仍開著舊版頁面（快取）的人送出預約會被拒絕：在 018 之前就開啟的新版頁面顯示「預約表單已更新，請重新整理頁面後再送出」，更早的舊版頁面仍顯示英文「Invalid application」；兩者重新整理即可。驗收：用合成學號預約一筆，幹部清單的該筆預約應有 `consent`；同一學號第三筆或時段重疊的預約應被拒絕。`tests/booking-limits-postgres.test.mjs` 以 PGlite 套用 001–018 驗證；這不代表託管環境的多連線實測。
 
 ## 017：原圖改存 Google 雲端硬碟（2026-10-13）
 

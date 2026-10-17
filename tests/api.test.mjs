@@ -197,3 +197,29 @@ test('Photo reads follow the reported storage and recover from a Drive record re
  assert.equal((await c.api.lifecycle('photo_read',{id:'p2'},token)).photo.data,'CCCC');
  c.done();
 });
+
+test('Lifecycle RPC refusals reach members in the local server zh wording and translate back in English mode',async t=>{
+ const refusals={
+  'Member already has two active reservations':'同一學號最多同時兩筆有效預約或借用',
+  'Member already has a reservation in this time':'與你已有的預約時段重疊，請改選其他時間',
+  'Borrow terms must be accepted':'請先詳細閱讀並同意借車規範',
+  'Borrow terms changed; read them again':'借車規範已更新，請重新閱讀並同意',
+  'Reservation conflict':'車輛或配件不可預約',
+  'Invalid reservation window':'預約時間不正確',
+  'Membership inactive':'社員資格未生效或已過期',
+  'Member already has an active loan':'已有使用中車輛',
+  'Invalid application':'預約表單已更新，請重新整理頁面後再送出',
+ };
+ const c=await client(t),payload={requestId:'test-request'};
+ const refuse=async message=>{c.expect({path:'/rest/v1/rpc/lifecycle',body:{p_action:'apply',p_token:null,p_payload:payload},status:400,result:{code:'P0001',message}});return c.api.lifecycle('apply',payload).then(()=>assert.fail('refusal expected'),error=>error);};
+ for(const [english,zh] of Object.entries(refusals)){const error=await refuse(english);assert.equal(error.message,zh);assert.equal(error.status,400);assert.equal(error.code,'P0001');}
+ // Unknown text is shown unchanged rather than guessed.
+ assert.equal((await refuse('Some new refusal')).message,'Some new refusal');
+ c.done();
+ const previous=Object.fromEntries(['localStorage','MutationObserver'].map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
+ globalThis.localStorage={getItem:k=>k==='bike-language'?'en':null,setItem(){}};
+ globalThis.MutationObserver=class{observe(){}disconnect(){}};
+ t.after(()=>{for(const [k,d]of Object.entries(previous)){if(d)Object.defineProperty(globalThis,k,d);else delete globalThis[k];}});
+ const {translate}=await import('../public/i18n.js?refusals');
+ for(const zh of Object.values(refusals)){const shown=translate(`預約失敗：${zh}`);assert.match(shown,/^Booking failed: /);assert.doesNotMatch(shown,/[㐀-鿿]/,shown);}
+});

@@ -1,4 +1,4 @@
-import {lifecycle,currentAdmin,date} from './api.js?v=photo1013';
+import {lifecycle,currentAdmin,date} from './api.js?v=refusal1017';
 import {confirmedFleet} from './fleet-catalog.js';
 
 const $=id=>document.getElementById(id);
