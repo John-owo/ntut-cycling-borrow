@@ -57,7 +57,7 @@ create or replace function private.lifecycle_apply_core(p_payload jsonb) returns
 declare
  v_member private.lifecycle_members; v_member_id uuid; v_existing jsonb; v_result jsonb; v_id uuid; v_ids uuid[];
  v_start timestamptz; v_end timestamptz; v_hash text; v_actor uuid; v_student text; v_name text;
- v_storage jsonb; v_now timestamptz; v_terms text;
+ v_storage jsonb; v_now timestamptz; v_consent_version text;
 begin
  if not private.lifecycle_keys(p_payload,array['requestId','studentId','name','assetIds','start','end','key','accepted','termsVersion']) or not (p_payload ?& array['requestId','studentId','name','assetIds','start','end','key','accepted','termsVersion']) then raise exception 'Invalid application'; end if;
  if (p_payload->>'key') !~ '^[a-f0-9]{64}$' then raise exception 'Invalid booking key'; end if;
@@ -77,7 +77,7 @@ begin
   v_member_id:=v_member.id;
  end if;
  if not private.lifecycle_policy_ready() then raise exception 'Borrow policy incomplete'; end if;
- v_terms:=private.lifecycle_consent(p_payload);
+ v_consent_version:=private.lifecycle_consent(p_payload);
  v_start:=private.lifecycle_time(p_payload->>'start'); v_end:=private.lifecycle_time(p_payload->>'end');
  if v_start<v_now or v_end<=v_start or v_end>v_start+interval '5 days' then raise exception 'Invalid reservation window'; end if;
  if jsonb_typeof(p_payload->'assetIds')<>'array' or jsonb_array_length(p_payload->'assetIds')<1 or jsonb_array_length(p_payload->'assetIds')>20 then raise exception 'Invalid assets'; end if;
@@ -102,7 +102,7 @@ begin
  end if;
  v_id:=pg_catalog.gen_random_uuid();
  insert into private.lifecycle_reservations(id,member_id,borrower,starts_at,ends_at,status,access_hash,approval,terms_version,terms_accepted_at)
-  values(v_id,v_member_id,jsonb_build_object('studentId',v_student,'name',v_name,'contact',''),v_start,v_end,'reserved',v_hash,'pending',v_terms,v_now);
+  values(v_id,v_member_id,jsonb_build_object('studentId',v_student,'name',v_name,'contact',''),v_start,v_end,'reserved',v_hash,'pending',v_consent_version,v_now);
  insert into private.lifecycle_reservation_assets(reservation_id,asset_id) select v_id,x from unnest(v_ids) x;
  insert into private.lifecycle_events(actor_type,actor_id,action,reservation_id,details) values('member',v_member_id,'apply',v_id,jsonb_build_object('selfService',true));
  v_result:=jsonb_build_object('reservation',private.lifecycle_reservation_json(v_id));
@@ -118,7 +118,7 @@ declare
  v_start timestamptz; v_end timestamptz; v_data bytea; v_mime text;
  v_phase text; v_slot text; v_checks jsonb; v_signature jsonb;
  v_name text; v_note text; v_abnormal boolean; v_storage jsonb; v_now timestamptz:=clock_timestamp();
- v_hash text; v_scope uuid; v_signer text; v_terms text;
+ v_hash text; v_scope uuid; v_signer text; v_consent_version text;
 begin
  if p_action='calendar' then
   if not private.lifecycle_keys(p_payload,array['start','end']) or not (p_payload ?& array['start','end']) then raise exception 'Invalid calendar range'; end if;
@@ -174,7 +174,7 @@ begin
   if v_scope is not null then raise exception 'Use the booking form for a new reservation'; end if;
   if not v_member.active or v_member.valid_until<v_now then raise exception 'Membership inactive'; end if;
   if not private.lifecycle_policy_ready() then raise exception 'Borrow policy incomplete'; end if;
-  v_terms:=private.lifecycle_consent(p_payload);
+  v_consent_version:=private.lifecycle_consent(p_payload);
   v_start:=private.lifecycle_time(p_payload->>'start'); v_end:=private.lifecycle_time(p_payload->>'end');
   if v_start<v_now or v_end<=v_start or v_end>v_start+interval '5 days' or v_member.valid_until<v_end then raise exception 'Invalid reservation window'; end if;
   if jsonb_typeof(p_payload->'assetIds')<>'array' or jsonb_array_length(p_payload->'assetIds')<1 or jsonb_array_length(p_payload->'assetIds')>20 then raise exception 'Invalid assets'; end if;
@@ -192,7 +192,7 @@ begin
   if (v_storage->>'usedBytes')::bigint+(v_storage->>'reservedBytes')::bigint+67108864>(v_storage->>'budgetBytes')::bigint then raise exception 'Photo capacity reserved for existing loans; contact officers'; end if;
   v_id:=pg_catalog.gen_random_uuid();
   insert into private.lifecycle_reservations(id,member_id,borrower,starts_at,ends_at,status,terms_version,terms_accepted_at)
-   values(v_id,v_member.id,jsonb_build_object('studentId',v_member.student_id,'name',v_member.name,'contact',v_member.contact),v_start,v_end,'reserved',v_terms,v_now);
+   values(v_id,v_member.id,jsonb_build_object('studentId',v_member.student_id,'name',v_member.name,'contact',v_member.contact),v_start,v_end,'reserved',v_consent_version,v_now);
   insert into private.lifecycle_reservation_assets(reservation_id,asset_id) select v_id,x from unnest(v_ids) x;
   insert into private.lifecycle_events(actor_type,actor_id,action,reservation_id) values('member',v_member.id,'reserve',v_id);
   v_result:=jsonb_build_object('reservation',private.lifecycle_reservation_json(v_id));

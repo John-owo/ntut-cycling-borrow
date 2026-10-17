@@ -90,3 +90,20 @@ test('018 refuses to install before 017 and keeps earlier bookings readable',asy
   try{await assert.rejects(bare.exec(sql('018_two_bookings_terms_consent.sql')),/Apply 017 before 018|does not exist/);}finally{await bare.close();}
  }finally{await db.close();}
 });
+
+test('018 still keeps one bike in hand: the second booking cannot be picked up while the first is out',async()=>{
+ const {db,rpc,admin,policy,bikes,apply}=await setup();
+ try{
+  const png=Buffer.from('89504e470d0a1a0a0000000d4948445200000064000000280806000000','hex');
+  const signature='data:image/png;base64,'+Buffer.concat([png,Buffer.alloc(150,1)]).toString('base64');
+  const checks={frame:true,tires:true,brakes:true,gears:true,accessories:true};
+  const first=await apply('P1',bikes[0],hour,2*hour),second=await apply('P1',bikes[1],3*hour,4*hour);
+  for(const b of [first,second])await admin('approve',{requestId:randomUUID(),reservationId:b.reservation.id});
+  // Fixtures: the first bike is out, the second booking's window has opened and its pickup photos exist.
+  await db.query("update private.lifecycle_reservations set status='in_use',picked_up_at=now() where id=$1",[first.reservation.id]);
+  await db.query("update private.lifecycle_reservations set starts_at=now()-interval '1 minute' where id=$1",[second.reservation.id]);
+  for(const slot of ['left','right','drivetrain','damage'])await db.query("insert into private.lifecycle_photos(id,reservation_id,asset_id,phase,slot,mime,bytes,size,sha256) values($1,$2,$3,'pickup',$4,'image/png',$5,$6,'fixture')",[randomUUID(),second.reservation.id,bikes[1].id,slot,png,png.length]);
+  const pickup=await rpc('pickup',{requestId:randomUUID(),reservationId:second.reservation.id,checks,notes:'',signature:{name:'Rider P1',accepted:true,termsVersion:policy.termsVersion,image:signature}},second.key);
+  assert.match(pickup.message,/active loan/,JSON.stringify(pickup));
+ }finally{await db.close();}
+});

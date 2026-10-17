@@ -144,4 +144,3 @@ body:has(.lc-notice[open]){overflow:hidden}
 .lc-terms-gate.done{background:var(--wash,#f4f5fa);border-left-color:var(--navy,#243c8a)}.lc-terms-gate.done button{background:transparent;color:var(--navy,#243c8a);border:1px solid var(--navy,#243c8a)}
 #lc-reserve-form.lc-locked{opacity:.5}
 .lc-terms-dialog .lc-terms{max-height:min(48dvh,420px);margin:12px 0 4px}.lc-terms-dialog .lc-terms-agree{margin:12px 0 16px}
-body:has(.lc-terms-dialog[open]){overflow:hidden}
