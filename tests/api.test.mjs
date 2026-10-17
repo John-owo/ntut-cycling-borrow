@@ -208,6 +208,7 @@ test('Lifecycle RPC refusals reach members in the local server zh wording and tr
   'Invalid reservation window':'預約時間不正確',
   'Membership inactive':'社員資格未生效或已過期',
   'Member already has an active loan':'已有使用中車輛',
+  'Member has an overdue loan; return it first':'你有逾期未還的車，請先歸還再預約',
   'Invalid application':'預約表單已更新，請重新整理頁面後再送出',
  };
  const c=await client(t),payload={requestId:'test-request'};

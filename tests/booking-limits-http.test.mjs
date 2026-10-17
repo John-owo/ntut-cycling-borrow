@@ -52,3 +52,29 @@ test('SQLite booking: terms consent on every booking, two non-overlapping bookin
     assert.equal((await reserve(bikes[3], 12 * hour, 13 * hour)).status, 409);
   } finally { await app.close?.(); app.server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('SQLite booking: an overdue bike blocks new bookings until it is returned', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bike-booking-overdue-'));
+  const app = createApp({ dbPath: join(dir, 'db.sqlite'), rateLimit: 1000 });
+  await new Promise(r => app.server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${app.server.address().port}`;
+  let bearer;
+  const call = async (path, body, admin = false) => { const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(admin ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) }); return { status: response.status, ...await response.json() }; };
+  const staff = (action, payload = {}) => call('/api/admin/lifecycle', { action, payload }, true);
+  const key = () => randomBytes(32).toString('hex'), hour = 3600000, at = ms => new Date(Date.now() + ms).toISOString();
+  try {
+    app.addAdmin('officer', 'test-password-123');
+    bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
+    const policy = (await staff('settings', { location: '測試社辦', terms: '測試規範' })).settings;
+    const bikes = []; for (let i = 1; i <= 3; i++) bikes.push((await staff('asset', { code: `O-${i}`, name: `測試車${i}`, kind: 'bike', state: 'available', reason: '盤點' })).asset);
+    const apply = (studentId, bike, start, end) => call('/api/lifecycle', { action: 'apply', token: null, payload: { requestId: randomUUID(), studentId, name: '測試社員', assetIds: [bike.id], start: at(start), end: at(end), key: key(), accepted: true, termsVersion: policy.termsVersion } });
+    const out = (await apply('O1', bikes[0], hour, 2 * hour)).reservation;
+    // Fixture: the bike went out and its return time has passed.
+    app.db.prepare("UPDATE lifecycle_reservations SET status='in_use',start=?,end=?,pickedUpAt=? WHERE id=?").run(at(-3 * hour), at(-hour), at(-3 * hour), out.id);
+    const blocked = await apply('o1', bikes[1], 3 * hour, 4 * hour);
+    assert.equal(blocked.status, 409); assert.match(blocked.error, /逾期/);
+    assert.equal((await apply('O2', bikes[1], 3 * hour, 4 * hour)).status, 200, 'another student is unaffected');
+    app.db.prepare("UPDATE lifecycle_reservations SET status='returned',returnedAt=? WHERE id=?").run(at(0), out.id);
+    assert.equal((await apply('O1', bikes[2], 5 * hour, 6 * hour)).status, 200, 'returning the bike lifts the block');
+  } finally { app.server.closeAllConnections(); await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});

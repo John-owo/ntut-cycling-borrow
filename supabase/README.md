@@ -4,6 +4,10 @@
 
 原圖預算：017 之前存資料庫、192 MiB；017 之後新原圖存 Google 雲端硬碟、1 GiB。016 起只為使用中的車預留尚缺的還車照片；幹部 `list.storage` 可查看儲存位置、已用、預留與上限。這不是整個託管資料庫或雲端硬碟的容量保證，長期使用仍需監控並規劃備份及保留政策。
 
+## 019：有逾期未還的車時不能再預約（2026-10-17）
+
+在 018 之後執行一次 `migrations/019_block_booking_while_overdue.sql`（重跑會被擋下；未套用 018 也會中止）。只用 `create or replace` 重新定義 `lifecycle_member_window`：社員有任何 `in_use` 且已過歸還時間的預約時，`apply`／`reserve` 回「Member has an overdue loan; return it first」；歸還後恢復。車借出但還沒到歸還時間不受影響，其餘規則與資料不變。前端可先發布：新頁面在手機已知有逾期車時直接提示，019 之前伺服器仍照 018 接受預約。驗收：讓測試學號的借用逾期後再預約一筆，應被拒絕。`tests/booking-limits-postgres.test.mjs` 以 PGlite 驗證。
+
 ## 018：同一學號兩筆預約、預約前同意借車規範（2026-10-17）
 
 在 017 之後執行一次 `migrations/018_two_bookings_terms_consent.sql`（重跑會被擋下；未套用 017 也會中止）。內容：`lifecycle_reservations` 新增可為空的 `terms_version`、`terms_accepted_at`（兩者同時有值或同時為空，既有預約為空）；新增 `lifecycle_consent`（`accepted` 必須為 true、`termsVersion` 必須等於目前版本）與 `lifecycle_member_window`（同一社員最多兩筆 `reserved`／`in_use`／`inspection`，自己的 `reserved`／`in_use` 時段不得重疊）；重建 `lifecycle_settings_json`（加 `bookingConsent: true`）、`lifecycle_reservation_json`（加 `consent`）、`lifecycle_apply_core` 與 `lifecycle_member_core`，`apply`／`reserve` 多收 `accepted`、`termsVersion` 兩個欄位。取車「已有使用中車輛」的限制與簽署不變。

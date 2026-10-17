@@ -70,6 +70,7 @@ const refusals={
   'Invalid reservation window':'預約時間不正確',
   'Membership inactive':'社員資格未生效或已過期',
   'Member already has an active loan':'已有使用中車輛',
+  'Member has an overdue loan; return it first':'你有逾期未還的車，請先歸還再預約',
   'Existing legacy loan or application':'已有有效借車或登記紀錄',
   // Only a page cached from before the latest migration sends an outdated form.
   'Invalid application':'預約表單已更新，請重新整理頁面後再送出',
