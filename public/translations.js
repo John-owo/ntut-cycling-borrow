@@ -505,4 +505,10 @@ Object.assign(english, {
   "與你已有的預約時段重疊，請改選其他時間": "This overlaps one of your bookings; choose another time",
   "請先詳細閱讀並同意借車規範": "Read and accept the borrowing rules first",
   "借車規範已更新，請重新閱讀並同意": "The borrowing rules were updated; read and accept them again",
+  "車輛或配件不可預約": "The bike or accessory cannot be booked",
+  "預約時間不正確": "The booking time is invalid",
+  "社員資格未生效或已過期": "Membership is not active or has expired",
+  "已有使用中車輛": "You already have a bike in use",
+  "已有有效借車或登記紀錄": "You already have an active loan or registration",
+  "預約表單已更新，請重新整理頁面後再送出": "The booking form was updated; reload the page and submit again",
 });
