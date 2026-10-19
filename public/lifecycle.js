@@ -340,7 +340,8 @@ if($('lc-admin')){
  function reservationCard(r,panel,review){
   const card=make('article',undefined,'lc-record'),who=borrowerOf(r);card.dataset.status=r.status;
   const head=make('div',undefined,'lc-asset-head');head.append(make('strong',`${who.name} · ${codes(r)}`),pill(overdue(r)?'已逾期':r.approval==='pending'&&r.status==='reserved'?'待同意':statusNames[r.status]||r.status,overdue(r)||r.approval==='pending'&&r.status==='reserved'?'warn':statusTone[r.status]));card.append(head);
-  card.append(details('學號',who.studentId),details('預約',range(r.start,r.end)));
+  const items=r.assetIds.map(id=>(staff?.assets||[]).find(a=>a.id===id)||{code:id}),label=a=>a.name?`${a.code} · ${a.name}`:a.code,bikes=items.filter(a=>a.kind!=='accessory'),gear=items.filter(a=>a.kind==='accessory');
+  card.append(details('學號',who.studentId));if(bikes.length)card.append(details('車輛',bikes.map(label).join('、')));if(gear.length)card.append(details('配件',gear.map(label).join('、')));card.append(details('預約',range(r.start,r.end)));
   if(r.approval==='pending'&&r.status==='reserved')card.append(make('p','請確認此人已私訊社團 Instagram，並對照社員名單後再同意。','lc-next warn'));
   if(r.status==='reserved')card.append(details('取車',new Date(r.start)>new Date()?`${span(new Date(r.start)-new Date())}後開始`:'已可取車'));
   if(r.pickedUpAt)card.append(details('實際取車',fmt(r.pickedUpAt)));
