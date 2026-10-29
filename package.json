@@ -12,6 +12,6 @@
     "setup-admin": "node server/setup-admin.mjs"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.9"
+    "@electric-sql/pglite": "^0.5.12"
   }
 }
