@@ -51,7 +51,7 @@ if(memberPage){
  const saveKeys=list=>{try{localStorage.setItem(storeKey,JSON.stringify([...new Set(list)].slice(-20)));}catch{}};
  const newKey=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
  const tokenFor=r=>keyOf.get(r.id);
- const signerOf=r=>r?.borrower?.name||me?.member?.name||'';
+ const signerOf=r=>r?.borrower?.name?.trim()||me?.member?.name||'';
  async function mutate(name,payload,key,token=null){const generation=privacyGeneration,fingerprint=JSON.stringify(payload);let pending=pendingMutations.get(key);if(pending&&pending.fingerprint!==fingerprint)throw new Error('上一筆操作的結果尚未確認。請先更新借車紀錄，再重試相同內容。');if(!pending){pending={requestId:requestId(),fingerprint};pendingMutations.set(key,pending);}try{const result=await lifecycle(name,{...payload,requestId:pending.requestId},token);pendingMutations.delete(key);if(generation!==privacyGeneration)throw Object.assign(new Error('資格碼已切換'),{code:'TOKEN_CHANGED'});return result;}catch(e){if(e.status||e.code==='TOKEN_CHANGED')pendingMutations.delete(key);throw e;}}
  const weekStart=()=>{const d=taipeiMidnight(new Date());const weekday=(new Date(+d+taipeiOffset).getUTCDay()+6)%7;return new Date(+d+(-weekday+weekOffset*7)*dayMs);};
  const intersects=(a,b,c,d)=>new Date(a)<new Date(d)&&new Date(c)<new Date(b);
@@ -70,7 +70,7 @@ if(memberPage){
  // Nobody can start within the next few minutes, so the earliest start of a whole-day booking made now counts as covered.
  function coversDay(booked,d){const dayStart=+taipeiMidnight(d),to=dayStart+dayMs;let at=Math.max(dayStart,Date.now()+10*60000);if(at>=to)return false;for(const b of [...booked].sort((x,y)=>new Date(x.start)-new Date(y.start))){if(+new Date(b.start)>at)return false;at=Math.max(at,+blockingEnd(b));if(at>=to)return true;}return false;}
  const bookable=(a,d)=>['free','partial'].includes(dayState(a,d).mark);
- function clearPrivate(){memberGeneration++;privacyGeneration++;pendingMutations.clear();me=null;keyOf.clear();selectedReservation=null;justReserved=null;cancelling=null;cancelReason='';retryFiles.clear();uploading.clear();for(const url of previews.values())URL.revokeObjectURL(url);previews.clear();$('lc-records').replaceChildren();$('lc-flow').hidden=true;$('lc-flow-form').reset();$('lc-photo-inputs').replaceChildren();$('lc-checks').replaceChildren();$('lc-missing').replaceChildren();for(const id of ['lc-flow-title','lc-flow-subtitle','lc-location','lc-terms','lc-policy-version','lc-flow-message','lc-member-message','lc-name-hint','lc-photo-state','lc-check-state','lc-sign-state'])$(id).textContent='';clearSignature();$('lc-comparison').replaceChildren();$('lc-comparison').hidden=true;closeLightbox();updateBooking();}
+ function clearPrivate(){memberGeneration++;privacyGeneration++;pendingMutations.clear();me=null;keyOf.clear();selectedReservation=null;justReserved=null;cancelling=null;cancelReason='';retryFiles.clear();uploading.clear();for(const url of previews.values())URL.revokeObjectURL(url);previews.clear();$('lc-records').replaceChildren();$('lc-flow').hidden=true;$('lc-flow-form').reset();$('lc-photo-inputs').replaceChildren();$('lc-checks').replaceChildren();$('lc-missing').replaceChildren();for(const id of ['lc-flow-title','lc-flow-subtitle','lc-location','lc-terms','lc-policy-version','lc-flow-message','lc-member-message','lc-signer-name','lc-photo-state','lc-check-state','lc-sign-state'])$(id).textContent='';clearSignature();$('lc-comparison').replaceChildren();$('lc-comparison').hidden=true;closeLightbox();updateBooking();}
 
  function renderCalendar(){
   const root=$('lc-calendar');root.replaceChildren();if(!calendar)return;
@@ -199,10 +199,10 @@ if(memberPage){
   selectedReservation={record:fresh,phase};const flow=$('lc-flow'),form=$('lc-flow-form');flow.hidden=false;form.reset();flow.dataset.phase=phase;
   const bike=bikeOf(fresh);$('lc-flow-title').textContent=phase==='pickup'?'取車檢查與電子簽署':'歸還車況檢查';$('lc-flow-subtitle').textContent=`${bike?`${bike.code} · ${bike.name}`:'車輛'}｜${range(fresh.start,fresh.end)}`;
   const settings=me?.settings||calendar?.settings||{};$('lc-location').textContent=settings.location||'幹部尚未設定社辦位置';$('lc-terms').textContent=settings.terms||'幹部尚未設定借車規範';$('lc-policy-version').textContent=settings.termsVersion?settings.termsVersion.slice(0,12):'—';$('lc-policy-version').title=settings.termsVersion||'';$('lc-guide').open=phase==='pickup';
-  $('lc-signature-block').hidden=phase!=='pickup';$('lc-abnormal-line').hidden=phase!=='return';$('lc-check-hint').textContent=phase==='pickup'?'每一項都要確認為「正常」才能取車；若有異常，請停止取車並聯絡幹部。':'逐項選擇實際狀況。任一項異常會送交幹部檢查，車輛暫停預約。';$('lc-name-hint').textContent=signerOf(fresh)?`須與預約時填寫的姓名相同：${signerOf(fresh)}`:'';
+  $('lc-signature-block').hidden=phase!=='pickup';$('lc-abnormal-line').hidden=phase!=='return';$('lc-check-hint').textContent=phase==='pickup'?'每一項都要確認為「正常」才能取車；若有異常，請停止取車並聯絡幹部。':'逐項選擇實際狀況。任一項異常會送交幹部檢查，車輛暫停預約。';
   renderChecks();renderSlots();clearSignature();$('lc-flow-message').textContent='';updateFlow();updateDock();scrollTo(flow);}
  // Drop the previous step's inputs at once so a late file choice cannot reach a stale form.
- function resetFlow(){selectedReservation=null;$('lc-flow').hidden=true;$('lc-photo-inputs').replaceChildren();$('lc-checks').replaceChildren();$('lc-missing').replaceChildren();}
+ function resetFlow(){selectedReservation=null;$('lc-signer-name').textContent='';$('lc-flow').hidden=true;$('lc-photo-inputs').replaceChildren();$('lc-checks').replaceChildren();$('lc-missing').replaceChildren();}
  function closeFlow(){resetFlow();updateDock();scrollTo($('lc-records'));}
  function renderChecks(){const box=$('lc-checks');box.replaceChildren();for(const [key,label] of Object.entries(checks)){const row=make('div',undefined,'lc-check');row.setAttribute('role','radiogroup');const id=`lc-check-${key}`;const name=make('span',label);name.id=id;row.setAttribute('aria-labelledby',id);row.append(name);for(const [value,text] of [['ok','正常'],['bad','異常']]){const option=make('label',undefined,`lc-choice ${value}`);const input=make('input');input.type='radio';input.name=key;input.value=value;input.addEventListener('change',updateFlow);option.append(input,make('span',text));row.append(option);}box.append(row);}}
  function slotPhotos(slot){const flow=selectedReservation;return (flow?.record.photos||[]).filter(p=>p.phase===flow.phase&&p.slot===slot);}
@@ -217,7 +217,7 @@ if(memberPage){
   if(answered.length<names.length)missing.push(`尚未檢查：${names.filter(k=>!values[k]).map(k=>checks[k]).join('、')}`);
   if(pickup&&bad.length)missing.push(`${bad.map(k=>checks[k]).join('、')}異常：請停止取車並聯絡幹部。`);
   if(abnormal&&!form.elements.notes.value.trim())missing.push('有異常時請在車況備註說明狀況。');
-  let signed=true;if(pickup){const name=form.elements.signatureName.value.trim();if(!form.elements.accepted.checked){missing.push('請勾選同意借車規範。');signed=false;}if(!name){missing.push('請填寫簽署姓名。');signed=false;}else if(name!==signerOf(selectedReservation.record)){missing.push('簽署姓名須與預約時填寫的姓名相同。');signed=false;}if(strokes<8){missing.push('請在簽名框手寫簽名。');signed=false;}}
+  let signed=true;if(pickup){if(!form.elements.accepted.checked){missing.push('請勾選同意借車規範。');signed=false;}if(!signerOf(flow.record)){missing.push('找不到預約姓名，請聯絡幹部。');signed=false;}if(!hasSignature){missing.push('請在簽名框手寫簽名。');signed=false;}}
   return {values,photos,answered,bad,abnormal,missing,signed,pickup};}
  function updateFlow(){const s=flowState();if(!s)return;
   $('lc-photo-state').textContent=`${s.photos.length}/4`;$('lc-check-state').textContent=`${s.answered.length}/5${s.bad.length?` · ${s.bad.length} 項異常`:''}`;$('lc-sign-state').textContent=s.signed?'完成':'未完成';
@@ -225,7 +225,8 @@ if(memberPage){
   const progressList=$('lc-flow-progress');progressList.replaceChildren();for(const [label,done] of [['拍照',s.photos.length===4],['檢查',s.answered.length===5],...(s.pickup?[['簽署',s.signed]]:[]),['送出',false]]){const li=make('li',label);if(done)li.classList.add('done');progressList.append(li);}
   const list=$('lc-missing');list.replaceChildren();for(const text of s.missing)list.append(make('li',text));
   $('lc-flow-submit').textContent=s.pickup?'確認取車，開始借用':s.abnormal?'送出異常還車，交由幹部檢查':'確認歸還';$('lc-flow-submit').classList.toggle('danger',!s.pickup&&s.abnormal);
-  document.querySelector('.lc-sign-pad')?.classList.toggle('signed',strokes>=8);
+  $('lc-signer-name').textContent=s.pickup?signerOf(selectedReservation.record):'';
+  document.querySelector('.lc-sign-pad')?.classList.toggle('signed',hasSignature);
  }
  $('lc-flow-form').addEventListener('input',updateFlow);$('lc-flow-form').addEventListener('change',updateFlow);$('lc-flow-close').addEventListener('click',closeFlow);
 
@@ -237,13 +238,27 @@ if(memberPage){
  function openLightbox(src,alt){lightbox.replaceChildren();const img=make('img');img.src=src;img.alt=alt;const bar=make('div',undefined,'lc-lightbox-bar');bar.append(make('span',alt),button('關閉',closeLightbox,''));lightbox.append(bar,img);if(!lightbox.open)lightbox.showModal();}
  function closeLightbox(){if(lightbox.open)lightbox.close();lightbox.replaceChildren();}
 
- const canvas=$('lc-signature'),ctx=canvas.getContext('2d');let drawing=false,strokes=0;
- function clearSignature(){const width=Math.min(1000,Math.round((canvas.clientWidth||600)*Math.min(devicePixelRatio||1,2)));if(width>0&&canvas.width!==width){canvas.width=width;canvas.height=Math.round(width*.4);}ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#172c68';ctx.lineWidth=Math.max(3,canvas.width/200);ctx.lineCap='round';ctx.lineJoin='round';strokes=0;document.querySelector('.lc-sign-pad')?.classList.remove('signed');}
+ const canvas=$('lc-signature'),ctx=canvas.getContext('2d');let pointerId=null,lastPoint,hasSignature=false;
+ function clearSignature(){const width=Math.min(1000,Math.round((canvas.clientWidth||600)*Math.min(devicePixelRatio||1,2)));if(width>0&&canvas.width!==width){canvas.width=width;canvas.height=Math.round(width*.4);}ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#172c68';ctx.lineWidth=Math.max(3,canvas.width/200);ctx.lineCap='round';ctx.lineJoin='round';pointerId=null;hasSignature=false;document.querySelector('.lc-sign-pad')?.classList.remove('signed');}
  const point=e=>{const b=canvas.getBoundingClientRect();return [(e.clientX-b.left)*canvas.width/b.width,(e.clientY-b.top)*canvas.height/b.height];};
- canvas.addEventListener('pointerdown',e=>{drawing=true;canvas.setPointerCapture(e.pointerId);ctx.beginPath();ctx.moveTo(...point(e));});canvas.addEventListener('pointermove',e=>{if(!drawing)return;ctx.lineTo(...point(e));ctx.stroke();strokes++;});canvas.addEventListener('pointerup',()=>{drawing=false;updateFlow();});canvas.addEventListener('pointercancel',()=>drawing=false);$('lc-signature-clear').addEventListener('click',()=>{clearSignature();updateFlow();});clearSignature();
+ canvas.addEventListener('pointerdown',e=>{
+  if(pointerId!==null||e.button!==0)return;
+  pointerId=e.pointerId;canvas.setPointerCapture(pointerId);lastPoint=point(e);
+ });
+ canvas.addEventListener('pointermove',e=>{
+  if(e.pointerId!==pointerId)return;
+  const nextPoint=point(e);
+  if(nextPoint[0]===lastPoint[0]&&nextPoint[1]===lastPoint[1])return;
+  ctx.beginPath();ctx.moveTo(...lastPoint);ctx.lineTo(...nextPoint);ctx.stroke();
+  lastPoint=nextPoint;hasSignature=true;
+ });
+ canvas.addEventListener('lostpointercapture',e=>{
+  if(e.pointerId!==pointerId)return;
+  pointerId=null;updateFlow();
+ });$('lc-signature-clear').addEventListener('click',()=>{clearSignature();updateFlow();});clearSignature();
  $('lc-flow-form').addEventListener('submit',async e=>{e.preventDefault();const flow=selectedReservation;if(!flow)return;const form=e.currentTarget;const fresh=me?.reservations.find(r=>r.id===flow.record.id);if(!fresh)return;const s=flowState();if(s.missing.length){say('lc-flow-message',s.missing[0],true);$('lc-missing').scrollIntoView({block:'nearest'});return;}
   const payload={reservationId:fresh.id,checks:Object.fromEntries(Object.entries(s.values).map(([k,v])=>[k,v==='ok'])),notes:form.elements.notes.value.trim()};
-  if(flow.phase==='pickup'){payload.signature={name:form.elements.signatureName.value.trim(),accepted:true,termsVersion:me.settings?.termsVersion||calendar?.settings?.termsVersion,image:canvas.toDataURL('image/png')};if(payload.signature.image.length>350000){say('lc-flow-message','簽名資料過大，請清除後重新簽署。',true);return;}}else payload.abnormal=s.abnormal;
+  if(flow.phase==='pickup'){payload.signature={name:signerOf(fresh),accepted:true,termsVersion:me.settings?.termsVersion||calendar?.settings?.termsVersion,image:canvas.toDataURL('image/png')};if(payload.signature.image.length>350000){say('lc-flow-message','簽名資料過大，請清除後重新簽署。',true);return;}}else payload.abnormal=s.abnormal;
   const submit=$('lc-flow-submit'),generation=privacyGeneration,restore=busy(submit,'送出中…');say('lc-flow-message','正在送出，請等待系統確認…');try{await mutate(flow.phase,payload,`${flow.phase}:${fresh.id}`,tokenFor(fresh));resetFlow();await Promise.all([loadMe(true),loadCalendar(true)]);if(generation===privacyGeneration){say('lc-member-message',flow.phase==='pickup'?'已記錄實際取車時間，借用正式開始。':payload.abnormal?'已送交幹部檢查，車輛暫停預約。':'歸還已結案，車輛恢復可借。','ok');scrollTo($('lc-member'));}}catch(err){if(err.code!=='TOKEN_CHANGED'&&generation===privacyGeneration)say('lc-flow-message',`無法完成：${err.message}`,true);}finally{restore();updateFlow();updateDock();}});
 
  // Accept a pasted officer message: keep only the 64-character credential.
