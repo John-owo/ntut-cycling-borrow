@@ -1,4 +1,4 @@
-import {english} from './translations.js?v=overdue1017';
+import {english} from './translations.js?v=signature1105';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
@@ -66,7 +66,6 @@ const patterns=[
  [/^(.+)｜(\d{1,2}\/\d{1,2}（週.）.+)$/,m=>`${m[1]} | ${enDates(m[2])}`],
  [/^已上傳 (\d+) 張 · 最近 (.+)$/,m=>`${m[1]} uploaded · latest ${m[2]}`],
  [/^(\d)\/(\d) · (\d+) 項異常$/,m=>`${m[1]}/${m[2]} · ${m[3]} with problems`],
- [/^須與預約時填寫的姓名相同：(.+)$/,m=>`Must match the name entered when booking: ${m[1]}`],
  [/^尚缺照片：(.+)$/,m=>`Photos missing: ${enList(m[1])}`],
  [/^尚未檢查：(.+)$/,m=>`Not checked yet: ${enList(m[1])}`],
  [/^(.+)異常：請停止取車並聯絡幹部。$/,m=>`Problem with ${enList(m[1]).toLowerCase()}: stop the pickup and contact an officer.`],
