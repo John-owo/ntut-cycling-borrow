@@ -1,5 +1,13 @@
 # Reservation lifecycle contract (2026-10-08)
 
+## 020 現行 API
+
+新申請一律走 `apply`，可選一台車與配件並送出規範同意欄位。公開 `calendar` 只將已核准的預約與使用中的借用列為時段占用。幹部 `approve` 在同一筆交易檢查整筆器材，將直接重疊的待審申請改為 `status:'cancelled'`、`approval:'pending'`、`allocationDeclined:true`，並記錄 `allocation_declined`。申請以 `[start,end)` 計算，接續的時段可分別核准。
+
+會員操作及照片服務只接受逐筆取還車碼。舊 `reserve` 與會員通用資格碼已停用。幹部 `access` 可替 `reserved` 或 `in_use` 紀錄產生或更換逐筆碼。幹部 `member` 可省略 `validUntil`，且不再接收 `token`。
+
+## 初版契約與歷次更新
+
 Keep legacy queue and its data intact. New independent numbered assets must be physically reconciled by officers before activation; never auto-convert aggregate opening loans into available assets. An approved member receives a 256-bit token, only its SHA-256 stored. Staff verifies identity/eligibility and sets expiry. No guessed credentials or self-approved membership.
 
 Transport: `POST /api/lifecycle` body `{action,token?,payload:{}}`; cloud `public.lifecycle(p_action text,p_token text,p_payload jsonb)`. Staff `POST /api/admin/lifecycle` body `{action,payload:{}}`; cloud `public.lifecycle_admin(p_action text,p_payload jsonb)` enforces existing require_admin/MFA/session. Frontend adapters in public/api.js owned by parent. JSON uses camelCase in both adapters. Errors use existing HTTP mechanism. All mutating actions transactional; replay requestId checks exact payload. All private tables inaccessible to anon/authenticated directly. Read actions never return another member's PII.

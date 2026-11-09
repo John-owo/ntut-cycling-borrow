@@ -1,4 +1,4 @@
-import {english} from './translations.js?v=signature1105';
+import {english} from './translations.js?v=allocation';
 let language='zh';
 try{language=localStorage.getItem('bike-language')==='en'?'en':'zh';}catch{}
 const weekdays={一:'Mon',二:'Tue',三:'Wed',四:'Thu',五:'Fri',六:'Sat',日:'Sun'};
@@ -50,7 +50,7 @@ const patterns=[
  [/^(\d+) 台$/,m=>`${m[1]} ${m[1]==='1'?'bike':'bikes'}`],
  [/^(.+) 可預約的車$/,m=>`Bikes for ${enDates(m[1])}`],
  [/^其他 (\d+) 台目前無法預約$/,m=>`${m[1]} other ${m[1]==='1'?'bike is':'bikes are'} unavailable now`],
- [/^(已預約|使用中|待確認) (.+)$/,m=>`${translate(m[1])} ${enDates(m[2])}`],
+ [/^(已預約|使用中) (.+)$/,m=>`${translate(m[1])} ${enDates(m[2])}`],
  [/^(此時段|這天)已有預約：(.+)$/,m=>`${m[1]==='此時段'?'Booked in this period':'Booked this day'}: ${enDates(m[2])}`],
  [/^(.+) 與日曆上已有的(.+)時段重疊（(.+)），請調整時間。$/,m=>`${m[1]==='所選車輛'?'The chosen bike':m[1]} overlaps an existing ${translate(m[2]).toLowerCase()} booking (${enDates(m[3])}). Please change the time.`],
  [/^共 (.+?)(（超過五天上限）)?$/,m=>`Total ${enDates(m[1])}${m[2]?' (over the five-day limit)':''}`],

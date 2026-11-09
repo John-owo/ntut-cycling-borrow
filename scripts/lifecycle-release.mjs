@@ -11,6 +11,7 @@ const fingerprint=`select encode(sha256(convert_to(jsonb_build_object(
 export function buildLifecycleRelease(){
  const files=['009_reservation_lifecycle.sql','010_lifecycle_legacy_inventory.sql','011_confirmed_fleet_catalog.sql'];
  const body=files.map(file=>readFileSync(new URL('../supabase/migrations/'+file,import.meta.url),'utf8')
+  .replaceAll('\r\n','\n')
   .replace(/^\s*(?:begin|commit);\s*$/gmi,'')
   .replace(/^\s*notify pgrst\s*,\s*'reload schema';\s*$/gmi,'')).join('\n');
  return `begin;

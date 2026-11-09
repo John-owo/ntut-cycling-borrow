@@ -68,6 +68,11 @@ const refusals={
   'Reservation conflict':'車輛或配件不可預約',
   'Asset unavailable':'車輛或配件不可預約',
   'Invalid reservation window':'預約時間不正確',
+  'Reservation does not need approval':'這筆申請目前無法同意',
+  'Reservation window has ended':'申請時段已結束',
+  'Only active bookings can get a new key':'只有進行中的預約或借用可以產生取還車碼',
+  'Generate another key':'請重新產生',
+  'Invalid member token':'取還車碼無效',
   'Membership inactive':'社員資格未生效或已過期',
   'Member already has an active loan':'已有使用中車輛',
   'Member has an overdue loan; return it first':'你有逾期未還的車，請先歸還再預約',
@@ -75,7 +80,11 @@ const refusals={
   // Only a page cached from before the latest migration sends an outdated form.
   'Invalid application':'預約表單已更新，請重新整理頁面後再送出',
 };
-export const localRefusal=error=>{if(Object.hasOwn(refusals,error?.message))error.message=refusals[error.message];return error;};
+export const localRefusal=error=>{
+  if(error?.message==='Invalid member token')error.status=401;
+  if(Object.hasOwn(refusals,error?.message))error.message=refusals[error.message];
+  return error;
+};
 // All lifecycle authority remains in the server/database; client checks only aid input.
 export async function lifecycle(action, payload = {}, token = null, admin = false) {
   if(admin && mfaState?.required) throw Object.assign(new Error('MFA_REQUIRED'), {status:403});

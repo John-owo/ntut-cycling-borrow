@@ -1,4 +1,4 @@
-import {lifecycle,currentAdmin,date} from './api.js?v=overdue1017';
+import {lifecycle,currentAdmin,date} from './api.js?v=allocation';
 import {confirmedFleet} from './fleet-catalog.js';
 
 const $=id=>document.getElementById(id);
@@ -35,6 +35,9 @@ const parsedChecks=value=>{try{return typeof value==='string'?JSON.parse(value):
 const button=(text,onClick,cls='secondary')=>{const b=make('button',text,cls);b.type='button';b.addEventListener('click',onClick);return b;};
 const pill=(text,tone='')=>make('span',text,`lc-pill${tone?` ${tone}`:''}`);
 const overdue=r=>r.status==='in_use'&&new Date(r.end)<new Date();
+const pending=r=>r.status==='reserved'&&r.approval==='pending';
+const intersects=(a,b,c,d)=>new Date(a)<new Date(d)&&new Date(c)<new Date(b);
+const bookingStatus=(r,pendingLabel='待幹部同意')=>overdue(r)?'已逾期':r.allocationDeclined?'未獲分配':pending(r)?pendingLabel:statusNames[r.status]||r.status;
 // Keep a button disabled with progress text until the server answers.
 const busy=(b,text)=>{const label=b.textContent;b.disabled=true;b.setAttribute('aria-busy','true');b.textContent=text;return ()=>{b.disabled=false;b.removeAttribute('aria-busy');b.textContent=label;};};
 const scrollTo=el=>el?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
@@ -52,12 +55,11 @@ if(memberPage){
  const newKey=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
  const tokenFor=r=>keyOf.get(r.id);
  const signerOf=r=>r?.borrower?.name?.trim()||me?.member?.name||'';
- async function mutate(name,payload,key,token=null){const generation=privacyGeneration,fingerprint=JSON.stringify(payload);let pending=pendingMutations.get(key);if(pending&&pending.fingerprint!==fingerprint)throw new Error('上一筆操作的結果尚未確認。請先更新借車紀錄，再重試相同內容。');if(!pending){pending={requestId:requestId(),fingerprint};pendingMutations.set(key,pending);}try{const result=await lifecycle(name,{...payload,requestId:pending.requestId},token);pendingMutations.delete(key);if(generation!==privacyGeneration)throw Object.assign(new Error('資格碼已切換'),{code:'TOKEN_CHANGED'});return result;}catch(e){if(e.status||e.code==='TOKEN_CHANGED')pendingMutations.delete(key);throw e;}}
+ async function mutate(name,payload,key,token=null){const generation=privacyGeneration,fingerprint=JSON.stringify(payload);let pending=pendingMutations.get(key);if(pending&&pending.fingerprint!==fingerprint)throw new Error('上一筆操作的結果尚未確認。請先更新借車紀錄，再重試相同內容。');if(!pending){pending={requestId:requestId(),fingerprint};pendingMutations.set(key,pending);}try{const result=await lifecycle(name,{...payload,requestId:pending.requestId},token);pendingMutations.delete(key);if(generation!==privacyGeneration)throw Object.assign(new Error('取還車碼已切換'),{code:'TOKEN_CHANGED'});return result;}catch(e){if(e.status||e.code==='TOKEN_CHANGED')pendingMutations.delete(key);throw e;}}
  const weekStart=()=>{const d=taipeiMidnight(new Date());const weekday=(new Date(+d+taipeiOffset).getUTCDay()+6)%7;return new Date(+d+(-weekday+weekOffset*7)*dayMs);};
- const intersects=(a,b,c,d)=>new Date(a)<new Date(d)&&new Date(c)<new Date(b);
  // An unreturned loan keeps blocking its assets after the planned end.
  const blockingEnd=b=>b.status==='in_use'&&new Date(b.end)<new Date()?new Date(8.64e15):new Date(b.end);
- const activeBookings=()=>(calendar?.bookings||[]).filter(b=>['reserved','in_use'].includes(b.status));
+ const activeBookings=()=>(calendar?.bookings||[]).filter(b=>!b.pending&&['reserved','in_use'].includes(b.status));
  function bookingFor(asset,day){const start=taipeiMidnight(day),end=new Date(+start+dayMs);return activeBookings().filter(b=>b.assetIds?.includes(asset.id)&&intersects(b.start,blockingEnd(b),start,end));}
  const assetById=id=>(calendar?.assets||[]).find(a=>a.id===id);
  const bikeOf=r=>(calendar?.assets||[]).find(a=>a.kind==='bike'&&r.assetIds.includes(a.id));
@@ -95,7 +97,7 @@ if(memberPage){
   const thumb=make('div',undefined,'lc-thumb'),photo=a.reference?.photos?.[0];
   if(photo){const link=make('a');link.href=photo.src;link.target='_blank';link.rel='noopener noreferrer';link.title='開啟原始車輛參考照片';const img=make('img');img.src=photo.src;img.alt=photo.alt;img.loading='lazy';img.decoding='async';link.append(img);thumb.append(link);}else thumb.append(make('span','照片待補','lc-photo-pending'));
   const body=make('div',undefined,'lc-asset-body'),head=make('div',undefined,'lc-asset-head');head.append(make('strong',`${a.code} · ${a.name}`),pill(state.label,state.mark));body.append(head);if(a.id)body.append(make('p',fitText(a),'lc-fit'));
-  if(state.booked?.length)for(const b of state.booked)body.append(make('p',`${b.pending?'待確認':statusNames[b.status]} ${b.status==='in_use'&&new Date(b.end)<new Date()?`${when(b.start)} 起，尚未歸還`:range(b.start,b.end)}`,'lc-booking'));
+  if(state.booked?.length)for(const b of state.booked)body.append(make('p',`${statusNames[b.status]} ${b.status==='in_use'&&new Date(b.end)<new Date()?`${when(b.start)} 起，尚未歸還`:range(b.start,b.end)}`,'lc-booking'));
   else body.append(make('p',!a.id?'幹部尚未完成此車的系統建檔與實車盤點。':a.state==='available'?'這天全天尚無預約。':'目前暫停預約，請洽幹部確認車況。','lc-note'));
   const strip=make('div',undefined,'lc-availability-strip');
   for(let i=0;i<7;i++){const d=new Date(+start+i*dayMs),s=dayState(a,d);const day=button('',()=>pickDay(d),`lc-availability-day ${s.mark}`);day.append(make('span',weekdayName(d).replace('週','')),make('i','','lc-mark '+s.mark));day.disabled=+d<+taipeiMidnight(new Date());day.setAttribute('aria-label',`${a.code} ${shortDate(d)} ${s.label}`);day.setAttribute('aria-pressed',taipeiDayKey(d)===taipeiDayKey(selectedDay));strip.append(day);}
@@ -154,17 +156,17 @@ if(memberPage){
  // Read every booking this device remembers; a key replaced by an officer is forgotten.
  async function loadMe(quiet=false){const keys=savedKeys(),generation=++memberGeneration,privacy=privacyGeneration;if(!keys.length){me=null;keyOf.clear();renderRecords();updateBooking();return true;}if(!quiet)say('lc-member-message','正在讀取這支手機的借車紀錄…');const results=await Promise.all(keys.map(k=>lifecycle('me',{},k).then(v=>({k,v}),e=>({k,e}))));if(generation!==memberGeneration||privacy!==privacyGeneration)return false;const lost=results.filter(x=>x.e?.status===401).map(x=>x.k);if(lost.length)saveKeys(savedKeys().filter(k=>!lost.includes(k)));const failed=results.filter(x=>x.e&&x.e.status!==401),found=new Map();keyOf.clear();let member=null,settings=null;for(const {k,v} of results.filter(x=>x.v)){settings=v.settings||settings;member=member||v.member;for(const r of v.reservations||[])if(!found.has(r.id)){found.set(r.id,r);keyOf.set(r.id,k);}}me={member,settings,reservations:[...found.values()].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))};renderRecords();updateBooking();if(failed.length){say('lc-member-message',`有借車紀錄暫時無法讀取：${failed[0].e.message}`,true);return false;}if(!quiet)say('lc-member-message','已更新這支手機的借車紀錄。','ok');return true;}
 
- const pending=r=>r.status==='reserved'&&r.approval==='pending';
  function progress(r){const steps=[['已送出',true],['幹部同意',r.approval!=='pending'],['取車使用',!!r.pickedUpAt],['還車',!!r.returnedAt||r.status==='inspection']];const current=pending(r)?1:r.status==='reserved'?2:r.status==='in_use'?2:-1;const ol=make('ol',undefined,'lc-progress');steps.forEach(([label,done],i)=>{const li=make('li',label);if(done)li.classList.add('done');if(i===current)li.setAttribute('aria-current','step');ol.append(li);});return ol;}
  function nextStep(r){const now=new Date(),start=new Date(r.start),end=new Date(r.end);
-  if(pending(r))return ['已送出，等待幹部同意。請私訊社團 Instagram，告知學號、姓名、車號與借用時間；幹部同意後才能取車。','warn'];
+  if(r.allocationDeclined)return ['同時段有其他申請獲得車輛或配件，這筆申請已結案。','info'];
+  if(pending(r))return ['已送出，等待幹部同意。幹部同意後才會保留時段。請私訊社團 Instagram，告知學號、姓名、車號與借用時間。','warn'];
   if(r.status==='reserved'){if(now<start)return [`可於 ${when(r.start)} 起開始取車檢查（還有 ${span(start-now)}）。到社辦後依序拍照、檢查並簽署。`,'info'];if(now<end)return ['現在可以取車：到社辦後依序拍照、檢查並簽署，完成後借用才正式開始。','go'];return ['預約時段已結束，無法再取車。請聯絡幹部或取消此預約。','warn'];}
   if(r.status==='in_use')return now<end?[`請於 ${when(r.end)} 前歸還（還有 ${span(end-now)}）。還車時同樣需要拍照與檢查。`,'info']:[`已逾期 ${span(now-end)}。請盡快歸還並主動聯絡幹部。`,'warn'];
   if(r.status==='inspection')return ['已送交幹部檢查；車輛暫停預約，處理結果會更新在這裡。','warn'];
   return null;}
  function recordCard(r){
   const box=make('article',undefined,'lc-record');box.dataset.status=r.status;if(r.id===justReserved)box.classList.add('is-new');const bike=bikeOf(r),extras=accessoriesOf(r);
-  const title=make('div',undefined,'lc-asset-head');title.append(make('strong',`${bike?`${bike.code} · ${bike.name}`:'車輛'}`),pill(overdue(r)?'已逾期':pending(r)?'待幹部同意':statusNames[r.status]||r.status,overdue(r)||pending(r)?'warn':statusTone[r.status]));box.append(title);
+  const title=make('div',undefined,'lc-asset-head');title.append(make('strong',`${bike?`${bike.code} · ${bike.name}`:'車輛'}`),pill(bookingStatus(r),overdue(r)||pending(r)?'warn':statusTone[r.status]));box.append(title);
   if(r.id===justReserved)box.append(make('p','剛送出預約','lc-new-badge'));
   if(r.borrower?.name)box.append(details('借用人',`${r.borrower.name}${r.borrower.studentId?` · ${r.borrower.studentId}`:''}`));
   if(['reserved','in_use','inspection','returned'].includes(r.status))box.append(progress(r));
@@ -176,7 +178,7 @@ if(memberPage){
   if(r.status==='in_use')actions.append(button('開始還車',()=>showFlow(r,'return'),''));
   if(r.photos?.length)actions.append(button('比較借還照片',()=>comparePhotos(r)));
   box.append(actions);
-  if(cancelling===r.id)box.append(cancelForm(r));
+  if(r.status==='reserved'&&cancelling===r.id)box.append(cancelForm(r));
   return box;
  }
  function cancelForm(r){const form=make('form',undefined,'lc-inline-form');const label=make('label','取消原因');const reason=make('textarea');reason.required=true;reason.rows=2;reason.maxLength=500;reason.placeholder='例如：行程改期';reason.value=cancelReason;reason.addEventListener('input',()=>{cancelReason=reason.value;});label.append(reason);const row=make('div',undefined,'lc-actions');const confirm=make('button','確認取消預約','danger');confirm.type='submit';row.append(confirm,button('返回',()=>{cancelling=null;renderRecords();}));form.append(label,row);form.addEventListener('submit',e=>{e.preventDefault();if(!reason.value.trim()){reason.focus();say('lc-member-message','請填寫取消原因。',true);return;}cancelOwn(r,reason.value.trim(),confirm);});if(!cancelReason)setTimeout(()=>reason.focus(),0);return form;}
@@ -230,10 +232,10 @@ if(memberPage){
  }
  $('lc-flow-form').addEventListener('input',updateFlow);$('lc-flow-form').addEventListener('change',updateFlow);$('lc-flow-close').addEventListener('click',closeFlow);
 
- async function comparePhotos(r){if(readingPhotos)return;readingPhotos=true;const generation=memberGeneration,token=tokenFor(r);const box=$('lc-comparison');box.replaceChildren();box.hidden=false;const head=make('div',undefined,'lc-flow-head');head.append(make('h3',`借車前後照片${bikeOf(r)?` · ${bikeOf(r).code}`:''}`),button('關閉',()=>{box.hidden=true;box.replaceChildren();},'text-button'));box.append(head,make('p','點照片可放大檢視。顯示每個項目最近一次上傳的原始照片。','fine'));
+ async function comparePhotos(r){if(readingPhotos)return;readingPhotos=true;const generation=privacyGeneration,token=tokenFor(r);const hasAccess=()=>generation===privacyGeneration&&token===tokenFor(r);const box=$('lc-comparison');box.replaceChildren();box.hidden=false;const head=make('div',undefined,'lc-flow-head');head.append(make('h3',`借車前後照片${bikeOf(r)?` · ${bikeOf(r).code}`:''}`),button('關閉',()=>{box.hidden=true;box.replaceChildren();},'text-button'));box.append(head,make('p','點照片可放大檢視。顯示每個項目最近一次上傳的原始照片。','fine'));
   const jobs=[];for(const [slot,label] of Object.entries(slots)){const row=make('section',undefined,'lc-compare-row');row.append(make('h4',label));const pair=make('div',undefined,'lc-photo-pair');for(const phase of ['pickup','return']){const photo=(r.photos||[]).filter(p=>p.phase===phase&&p.slot===slot).at(-1);const cell=make('figure');cell.append(make('figcaption',phase==='pickup'?'取車前':'歸還時'));if(photo){const slotBox=make('div','讀取中…','lc-photo-loading');cell.append(slotBox,make('small',fmt(photo.uploadedAt)));jobs.push({photo,slotBox,alt:`${label}，${phase==='pickup'?'取車前':'歸還時'}`});}else cell.append(make('p','尚無照片','lc-photo-none'));pair.append(cell);}row.append(pair);box.append(row);}
   scrollTo(box);
-  try{for(const job of jobs){const response=await lifecycle('photo_read',{id:job.photo.id},token);if(generation!==memberGeneration)return;const img=make('img');img.alt=job.alt;img.src=`data:${response.photo.mime};base64,${response.photo.data}`;img.tabIndex=0;img.addEventListener('click',()=>openLightbox(img.src,job.alt));img.addEventListener('keydown',e=>{if(e.key==='Enter')openLightbox(img.src,job.alt);});job.slotBox.replaceWith(img);}}catch(e){if(generation===memberGeneration)box.append(make('p',`照片讀取失敗：${e.message}`,'error'));}finally{readingPhotos=false;}}
+  try{for(const job of jobs){const response=await lifecycle('photo_read',{id:job.photo.id},token);if(!hasAccess())return;const img=make('img');img.alt=job.alt;img.src=`data:${response.photo.mime};base64,${response.photo.data}`;img.tabIndex=0;img.addEventListener('click',()=>openLightbox(img.src,job.alt));img.addEventListener('keydown',e=>{if(e.key==='Enter')openLightbox(img.src,job.alt);});job.slotBox.replaceWith(img);}}catch(e){if(hasAccess())box.append(make('p',`照片讀取失敗：${e.message}`,'error'));}finally{readingPhotos=false;}}
  const lightbox=make('dialog',undefined,'lc-lightbox');lightbox.setAttribute('aria-label','照片放大檢視');document.body.append(lightbox);lightbox.addEventListener('click',e=>{if(e.target===lightbox)closeLightbox();});
  function openLightbox(src,alt){lightbox.replaceChildren();const img=make('img');img.src=src;img.alt=alt;const bar=make('div',undefined,'lc-lightbox-bar');bar.append(make('span',alt),button('關閉',closeLightbox,''));lightbox.append(bar,img);if(!lightbox.open)lightbox.showModal();}
  function closeLightbox(){if(lightbox.open)lightbox.close();lightbox.replaceChildren();}
@@ -261,7 +263,7 @@ if(memberPage){
   if(flow.phase==='pickup'){payload.signature={name:signerOf(fresh),accepted:true,termsVersion:me.settings?.termsVersion||calendar?.settings?.termsVersion,image:canvas.toDataURL('image/png')};if(payload.signature.image.length>350000){say('lc-flow-message','簽名資料過大，請清除後重新簽署。',true);return;}}else payload.abnormal=s.abnormal;
   const submit=$('lc-flow-submit'),generation=privacyGeneration,restore=busy(submit,'送出中…');say('lc-flow-message','正在送出，請等待系統確認…');try{await mutate(flow.phase,payload,`${flow.phase}:${fresh.id}`,tokenFor(fresh));resetFlow();await Promise.all([loadMe(true),loadCalendar(true)]);if(generation===privacyGeneration){say('lc-member-message',flow.phase==='pickup'?'已記錄實際取車時間，借用正式開始。':payload.abnormal?'已送交幹部檢查，車輛暫停預約。':'歸還已結案，車輛恢復可借。','ok');scrollTo($('lc-member'));}}catch(err){if(err.code!=='TOKEN_CHANGED'&&generation===privacyGeneration)say('lc-flow-message',`無法完成：${err.message}`,true);}finally{restore();updateFlow();updateDock();}});
 
- // Accept a pasted officer message: keep only the 64-character credential.
+ // Accept a pasted officer message: keep only the 64-character booking code.
  function normalizeToken(){const input=$('lc-token'),raw=input.value,match=raw.match(/[a-f0-9]{64}/i),value=match?match[0].toLowerCase():raw.replace(/\s+/g,'');if(value!==raw)input.value=value;const length=getToken().length;$('lc-token-count').textContent=hasToken()?'格式正確':`${length}/64`;$('lc-token-count').classList.toggle('done',hasToken());input.setAttribute('aria-invalid',String(length>0&&!hasToken()&&length>=64));}
  async function addCode(){normalizeToken();if(!hasToken()){say('lc-member-message','請貼上幹部傳給你的 64 字元取還車碼。',true);return;}const code=getToken(),submit=$('lc-token-form').querySelector('button[type=submit]'),restore=busy(submit,'確認中…');try{await lifecycle('me',{},code);saveKeys([...savedKeys(),code]);$('lc-token').value='';normalizeToken();await loadMe(true);say('lc-member-message','已把這筆借車加入這支手機。','ok');$('lc-transfer').open=false;}catch(e){say('lc-member-message',`取還車碼無法使用：${e.message}`,true);}finally{restore();}}
  $('lc-token-form').addEventListener('submit',e=>{e.preventDefault();addCode();});
@@ -292,11 +294,12 @@ if(memberPage){
   $('lc-terms-later').addEventListener('click',()=>dialog.close());
   $('lc-terms-open').addEventListener('click',()=>openTerms());}
  $('lc-reserve-form').addEventListener('submit',async e=>{e.preventDefault();const issues=bookingIssues();if(issues.length){say('lc-reserve-message',issues[0],true);return;}const w=chosenWindow(),assetIds=chosenAssets(),studentId=$('lc-student').value.trim().toUpperCase(),name=$('lc-name').value.trim();const consent=calendar.settings?.bookingConsent?{accepted:true,termsVersion:termsAgreed}:{};const draft=JSON.stringify({assetIds,start:w.start.toISOString(),end:w.end.toISOString(),studentId,name,...consent});if(applyDraft?.draft!==draft)applyDraft={draft,key:newKey()};const key=applyDraft.key;saveKeys([...savedKeys(),key]);try{localStorage.setItem('lc-borrower',JSON.stringify({studentId,name}));}catch{}
-  const submit=e.currentTarget.querySelector('button[type=submit]'),generation=privacyGeneration,restore=busy(submit,'送出中…');say('lc-reserve-message','正在向系統確認時段…');try{const result=await mutate('apply',{studentId,name,assetIds,start:w.start.toISOString(),end:w.end.toISOString(),key,...consent},'apply');applyDraft=null;termsAgreed='';justReserved=result?.reservation?.id||null;await Promise.all([loadCalendar(true),loadMe(true)]);if(generation===privacyGeneration){say('lc-reserve-message','預約已送出，等待幹部同意。請現在私訊社團 Instagram 告知借車。','ok');say('lc-member-message','預約已送出。請私訊社團 Instagram，幹部同意後就能在取車時間自行取車。','ok');selectedBike=null;$('lc-ig-ack').checked=false;renderCalendar();scrollTo($('lc-member'));}}catch(err){if(err.status){saveKeys(savedKeys().filter(k=>k!==key));applyDraft=null;}if(err.code!=='TOKEN_CHANGED'&&generation===privacyGeneration)say('lc-reserve-message',`預約失敗：${err.message}`,true);await loadCalendar(true);}finally{restore();updateBooking();}});
+  const submit=e.currentTarget.querySelector('button[type=submit]'),generation=privacyGeneration,restore=busy(submit,'送出中…');say('lc-reserve-message','正在向系統確認時段…');try{const result=await mutate('apply',{studentId,name,assetIds,start:w.start.toISOString(),end:w.end.toISOString(),key,...consent},'apply');applyDraft=null;termsAgreed='';justReserved=result?.reservation?.id||null;await Promise.all([loadCalendar(true),loadMe(true)]);if(generation===privacyGeneration){say('lc-reserve-message','預約已送出，等待幹部同意。時段會在同意後鎖定，請現在私訊社團 Instagram。','ok');say('lc-member-message','預約已送出。請私訊社團 Instagram，幹部同意後才會保留車輛與配件。','ok');selectedBike=null;$('lc-ig-ack').checked=false;renderCalendar();scrollTo($('lc-member'));}}catch(err){if(err.status){saveKeys(savedKeys().filter(k=>k!==key));applyDraft=null;}if(err.code!=='TOKEN_CHANGED'&&generation===privacyGeneration)say('lc-reserve-message',`預約失敗：${err.message}`,true);await loadCalendar(true);}finally{restore();updateBooking();}});
  $('lc-start').addEventListener('input',()=>{timeEdited=true;});for(const id of ['lc-start','lc-end'])$(id).addEventListener('input',()=>{wholeMode=0;limitTimes();renderAccessories();updateBooking();});
  for(const b of document.querySelectorAll('.lc-durations button'))b.addEventListener('click',()=>{const hours=Number(b.dataset.hours);if(hours%24===0){setWholeDays(hours/24);return;}const start=taipeiDateTime($('lc-start').value);if(!Number.isFinite(+start))return;wholeMode=0;$('lc-end').value=localDateTime(new Date(+start+hours*hourMs));limitTimes();renderAccessories();updateBooking();});
- $('lc-prev-week').addEventListener('click',()=>{weekOffset=Math.max(0,weekOffset-1);selectedDay=weekStart();setDefaultTime();loadCalendar(true);});$('lc-next-week').addEventListener('click',()=>{weekOffset=Math.min(5,weekOffset+1);selectedDay=weekStart();setDefaultTime();loadCalendar(true);});$('lc-refresh').addEventListener('click',()=>loadCalendar(true));
- normalizeToken();setDefaultTime();if(+selectedDay>=+weekStart()+7*dayMs)weekOffset=1;renderCalendar();loadCalendar(true);loadMe(true);document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCalendar();});setInterval(()=>{if(!document.hidden)loadCalendar();},30000);
+ $('lc-prev-week').addEventListener('click',()=>{weekOffset=Math.max(0,weekOffset-1);selectedDay=weekStart();setDefaultTime();loadCalendar(true);});$('lc-next-week').addEventListener('click',()=>{weekOffset=Math.min(5,weekOffset+1);selectedDay=weekStart();setDefaultTime();loadCalendar(true);});$('lc-refresh').addEventListener('click',()=>{loadCalendar(true);loadMe();});
+ normalizeToken();setDefaultTime();if(+selectedDay>=+weekStart()+7*dayMs)weekOffset=1;renderCalendar();loadCalendar(true);loadMe(true);document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCalendar();loadMe(true);}});
+ setInterval(()=>{if(!document.hidden){loadCalendar();if(me?.reservations.some(pending))loadMe(true);}},30000);
 }
 
 if($('lc-admin')){
@@ -307,24 +310,27 @@ if($('lc-admin')){
  const lists=['lc-todo','lc-bookings','lc-fleet','lc-members'];
  function resetAsset(){const f=$('lc-asset-form');f.reset();f.elements.id.value='';$('lc-asset-heading').textContent='新增車輛／配件';}
  function resetMember(){const f=$('lc-member-form');f.reset();f.elements.id.value='';$('lc-member-heading').textContent='編輯借用人';$('lc-member-card').hidden=true;}
- function clearToken(){const box=$('lc-new-token');box.replaceChildren();box.hidden=true;}
- function clearStaff(){adminGeneration++;staff=null;staffKey='';$('lc-admin-updated').textContent='';policyDirty=false;ui.open.clear();ui.forms.clear();ui.compare.clear();ui.issued.clear();photoCache.clear();pendingStaff.clear();for(const id of lists)$(id).replaceChildren();$('lc-admin').hidden=true;clearToken();resetAsset();resetMember();$('lc-policy-form').reset();$('lc-current-version').textContent='尚未發布';for(const c of document.querySelectorAll('.lc-count'))c.textContent='';}
+ function clearStaff(){adminGeneration++;staff=null;staffKey='';$('lc-admin-updated').textContent='';policyDirty=false;ui.open.clear();ui.forms.clear();ui.compare.clear();ui.issued.clear();photoCache.clear();pendingStaff.clear();for(const id of lists)$(id).replaceChildren();$('lc-admin').hidden=true;resetAsset();resetMember();$('lc-policy-form').reset();$('lc-current-version').textContent='尚未發布';for(const c of document.querySelectorAll('.lc-count'))c.textContent='';}
  async function loadStaff(force=false){if(!guard()){clearStaff();return;}if(loading){staffQueued=true;return;}loading=true;const generation=adminGeneration;try{const next=await adminAction('list');if(generation!==adminGeneration||!guard())return;const key=JSON.stringify(next);staff=next;$('lc-admin').hidden=false;if(force||key!==staffKey){staffKey=key;renderStaff();}$('lc-admin-updated').textContent=`更新於 ${new Date().toLocaleTimeString('zh-TW',{hour12:false,timeZone:'Asia/Taipei'})}`;}catch(e){if(generation!==adminGeneration)return;clearStaff();say('lc-admin-message',`借還車工作區無法更新：${e.message}`,true);}finally{loading=false;if(staffQueued){staffQueued=false;loadStaff(force);}}}
  // Reuse the request id while an outcome is unknown, so a retry cannot double-apply.
  async function write(action,payload,success,key=null){if(!guard()){clearStaff();return false;}let body=payload;if(key){const fingerprint=JSON.stringify(payload);let pending=pendingStaff.get(key);if(!pending||pending.fingerprint!==fingerprint){pending={fingerprint,requestId:requestId()};pendingStaff.set(key,pending);}body={...payload,requestId:pending.requestId};}try{await adminAction(action,body);if(key)pendingStaff.delete(key);say('lc-admin-message',success,'ok');await loadStaff(true);return true;}catch(e){if(key&&e.status)pendingStaff.delete(key);say('lc-admin-message',`${actionNames[action]||action}失敗：${e.message}`,true);return false;}}
- const actionNames={approve:'同意預約',access:'重新產生取還車碼',asset:'儲存車輛',cancel:'取消預約',resolve:'異常審核',settings:'發布規範',member:'儲存社員資格'};
+ const actionNames={approve:'同意預約',access:'重新產生取還車碼',asset:'儲存車輛',cancel:'取消預約',resolve:'異常審核',settings:'發布規範',member:'儲存借用人'};
 
  function switchTab(next,focus=false){tab=next;for(const b of document.querySelectorAll('.lc-tabs [role=tab]')){const on=b.dataset.tab===tab;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;if(on&&focus)b.focus();}for(const p of document.querySelectorAll('.lc-panel'))p.hidden=p.id!==`lc-panel-${tab}`;document.querySelector('.lc-tabs [aria-selected=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});}
  for(const b of document.querySelectorAll('.lc-tabs [role=tab]')){b.addEventListener('click',()=>switchTab(b.dataset.tab));b.addEventListener('keydown',e=>{const tabs=[...document.querySelectorAll('.lc-tabs [role=tab]')],i=tabs.indexOf(b);const j=e.key==='ArrowRight'?i+1:e.key==='ArrowLeft'?i-1:e.key==='Home'?0:e.key==='End'?tabs.length-1:null;if(j===null)return;e.preventDefault();switchTab(tabs[(j+tabs.length)%tabs.length].dataset.tab,true);});}
  const memberOf=r=>(staff?.members||[]).find(m=>m.id===r.memberId);
  const borrowerOf=r=>{const member=memberOf(r),b=r.borrower&&typeof r.borrower==='object'?r.borrower:{};return {name:b.name||member?.name||'社員',studentId:b.studentId||member?.studentId||'—',contact:b.contact||member?.contact||'—'};};
+ function competingApplications(r){
+  return (staff?.reservations||[]).filter(other=>other.id!==r.id&&pending(other)&&
+   intersects(r.start,r.end,other.start,other.end)&&other.assetIds.some(id=>r.assetIds.includes(id)));
+ }
  const codes=r=>r.assetIds.map(id=>(staff?.assets||[]).find(a=>a.id===id)||{code:id}).sort((a,b)=>(a.kind==='bike'?0:1)-(b.kind==='bike'?0:1)).map(a=>a.code).join('、');
  function keep(el,key){el.dataset.key=key;if(ui.open.has(key))el.open=true;el.addEventListener('toggle',()=>{if(el.open)ui.open.add(key);else ui.open.delete(key);});return el;}
 
  function renderStaff(){
   const focus=document.activeElement?.closest?.('[data-draft]')?.dataset.draft,caret=document.activeElement?.selectionStart;
   const assets=staff.assets||[],members=staff.members||[],reservations=staff.reservations||[],notifications=staff.notifications||[],now=new Date();
-  const awaiting=reservations.filter(r=>r.status==='reserved'&&r.approval==='pending').sort((a,b)=>new Date(a.start)-new Date(b.start));
+  const awaiting=reservations.filter(pending).sort((a,b)=>new Date(a.start)-new Date(b.start));
   const waitingReview=reservations.filter(r=>r.status==='inspection'),late=reservations.filter(overdue),upcoming=reservations.filter(r=>r.status==='reserved'&&r.approval!=='pending').sort((a,b)=>new Date(a.start)-new Date(b.start)),inUse=reservations.filter(r=>r.status==='in_use'&&!overdue(r)).sort((a,b)=>new Date(a.end)-new Date(b.end));
   const setup=[['取車地點與規範已發布',!!staff.settings?.termsVersion,'policy','前往設定規範'],['至少一台車輛已盤點為「可借用」',assets.some(a=>a.kind==='bike'&&a.state==='available'),'fleet','前往車輛配件']];
   const counts={todo:awaiting.length+waitingReview.length+late.length,bookings:reservations.filter(r=>['reserved','in_use','inspection'].includes(r.status)).length,fleet:assets.length,members:members.length,policy:staff.settings?.termsVersion?'':'!'};
@@ -344,21 +350,50 @@ if($('lc-admin')){
   renderBookings();
   // Fleet.
   const fleet=$('lc-fleet');fleet.replaceChildren();if(!assets.length)fleet.append(make('p','尚未建立任何車輛或配件。','lc-empty'));
-  for(const kind of ['bike','accessory']){const items=assets.filter(a=>a.kind===kind);if(!items.length)continue;fleet.append(make('h4',kind==='bike'?'車輛':'配件','lc-group-title'));for(const a of items){const row=make('article',undefined,'lc-list-row');const active=reservations.filter(r=>r.assetIds.includes(a.id)&&['reserved','in_use','inspection'].includes(r.status));const info=make('div');info.append(make('strong',`${a.code} · ${a.name}`));if(a.kind==='bike')info.append(make('small',fitText(a)));if(!active.length)info.append(make('small','目前無預約'));for(const r of active.sort((x,y)=>new Date(x.start)-new Date(y.start))){const who=borrowerOf(r),line=make('small',undefined,r.status==='in_use'?'lc-holder':'');line.append(make('b',`${overdue(r)?'已逾期':r.status==='reserved'&&r.approval==='pending'?'待同意':statusNames[r.status]}：${who.name}（${who.studentId}）`),document.createTextNode(` ${range(r.start,r.end)}${r.status==='in_use'&&who.contact!=='—'?` · 聯絡 ${who.contact}`:''}`));info.append(line);}row.append(info,pill(stateNames[a.state]||a.state,a.state==='available'?'free':'off'),button('編輯',()=>fillAsset(a),'text-button'));fleet.append(row);}}
+  for(const kind of ['bike','accessory']){const items=assets.filter(a=>a.kind===kind);if(!items.length)continue;fleet.append(make('h4',kind==='bike'?'車輛':'配件','lc-group-title'));for(const a of items){const row=make('article',undefined,'lc-list-row');const active=reservations.filter(r=>r.assetIds.includes(a.id)&&['reserved','in_use','inspection'].includes(r.status));const info=make('div');info.append(make('strong',`${a.code} · ${a.name}`));if(a.kind==='bike')info.append(make('small',fitText(a)));if(!active.length)info.append(make('small','目前無預約'));for(const r of active.sort((x,y)=>new Date(x.start)-new Date(y.start))){const who=borrowerOf(r),line=make('small',undefined,r.status==='in_use'?'lc-holder':'');line.append(make('b',`${bookingStatus(r,'待同意')}：${who.name}（${who.studentId}）`),document.createTextNode(` ${range(r.start,r.end)}${r.status==='in_use'&&who.contact!=='—'?` · 聯絡 ${who.contact}`:''}`));info.append(line);}row.append(info,pill(stateNames[a.state]||a.state,a.state==='available'?'free':'off'),button('編輯',()=>fillAsset(a),'text-button'));fleet.append(row);}}
   renderMembers();
   const policy=staff.settings||{};if(!policyDirty){$('lc-policy-form').elements.location.value=policy.location||'';$('lc-policy-form').elements.terms.value=policy.terms||'';}$('lc-current-version').textContent=policy.termsVersion?policy.termsVersion.slice(0,12):'尚未發布';$('lc-current-version').title=policy.termsVersion||'';
   if(focus){const el=document.querySelector(`.lc-panel:not([hidden]) [data-draft="${focus}"]`);if(el){el.focus({preventScroll:true});if(typeof caret==='number'&&el.setSelectionRange)try{el.setSelectionRange(caret,caret);}catch{}}}
  }
- function renderBookings(){if(!staff)return;const root=$('lc-bookings'),query=$('lc-booking-search').value.trim().toLowerCase();root.replaceChildren();const matches=(staff.reservations||[]).filter(r=>(bookingFilter==='all'||bookingFilter==='active'&&['reserved','in_use','inspection'].includes(r.status)||r.status===bookingFilter)&&(!query||[borrowerOf(r).name,borrowerOf(r).studentId,codes(r)].join(' ').toLowerCase().includes(query)));root.append(make('p',`${matches.length} 筆`,'fine lc-result-count'));if(!matches.length)root.append(make('p',(staff.reservations||[]).length?'沒有符合條件的紀錄。':'尚無預約紀錄。','lc-empty'));for(const r of matches)root.append(reservationCard(r,'bookings',r.status==='inspection'));}
+ function renderBookings(){
+  if(!staff)return;
+  const root=$('lc-bookings'),query=$('lc-booking-search').value.trim().toLowerCase();
+  root.replaceChildren();
+  const matches=(staff.reservations||[]).filter(r=>{
+   const state=r.allocationDeclined?'allocation_declined':pending(r)?'pending':r.status;
+   const included=bookingFilter==='all'||state===bookingFilter||bookingFilter==='active'&&['pending','reserved','in_use','inspection'].includes(state);
+   if(!included||!query)return included;
+   const {name,studentId}=borrowerOf(r);
+   return [name,studentId,codes(r)].join(' ').toLowerCase().includes(query);
+  });
+  root.append(make('p',`${matches.length} 筆`,'fine lc-result-count'));
+  if(!matches.length)root.append(make('p',(staff.reservations||[]).length?'沒有符合條件的紀錄。':'尚無預約紀錄。','lc-empty'));
+  for(const r of matches)root.append(reservationCard(r,'bookings',r.status==='inspection'));
+ }
  function renderMembers(){if(!staff)return;const root=$('lc-members'),query=$('lc-member-search').value.trim().toLowerCase(),members=(staff.members||[]).filter(m=>!query||`${m.name} ${m.studentId}`.toLowerCase().includes(query));root.replaceChildren();if(!members.length)root.append(make('p',(staff.members||[]).length?'沒有符合條件的借用人。':'還沒有借用人。社員送出預約後會出現在這裡。','lc-empty'));for(const m of members){const row=make('article',undefined,'lc-list-row');const info=make('div');info.append(make('strong',`${m.name} · ${m.studentId}`),make('small',m.contact||'未填聯絡方式'));row.append(info,pill(m.active?'可預約':'已停用',m.active?'free':'off'),button('編輯',()=>fillMember(m),'text-button'));root.append(row);}}
 
  function reservationCard(r,panel,review){
   const card=make('article',undefined,'lc-record'),who=borrowerOf(r);card.dataset.status=r.status;
-  const head=make('div',undefined,'lc-asset-head');head.append(make('strong',`${who.name} · ${codes(r)}`),pill(overdue(r)?'已逾期':r.approval==='pending'&&r.status==='reserved'?'待同意':statusNames[r.status]||r.status,overdue(r)||r.approval==='pending'&&r.status==='reserved'?'warn':statusTone[r.status]));card.append(head);
+  const head=make('div',undefined,'lc-asset-head');head.append(make('strong',`${who.name} · ${codes(r)}`),pill(bookingStatus(r,'待同意'),overdue(r)||pending(r)?'warn':statusTone[r.status]));card.append(head);
   const items=r.assetIds.map(id=>(staff?.assets||[]).find(a=>a.id===id)||{code:id}),label=a=>a.name?`${a.code} · ${a.name}`:a.code,bikes=items.filter(a=>a.kind!=='accessory'),gear=items.filter(a=>a.kind==='accessory');
   card.append(details('學號',who.studentId));if(bikes.length)card.append(details('車輛',bikes.map(label).join('、')));if(gear.length)card.append(details('配件',gear.map(label).join('、')));card.append(details('預約',range(r.start,r.end)));
-  if(r.approval==='pending'&&r.status==='reserved')card.append(make('p','請確認此人已私訊社團 Instagram，並對照社員名單後再同意。','lc-next warn'));
-  if(r.status==='reserved')card.append(details('取車',new Date(r.start)>new Date()?`${span(new Date(r.start)-new Date())}後開始`:'已可取車'));
+  const canApprove=pending(r)&&new Date(r.end)>new Date();
+  if(pending(r))card.append(make('p',canApprove?'請確認此人已私訊社團 Instagram，並對照社員名單後再同意。':'申請時段已結束，可拒絕這筆申請。','lc-next warn'));
+  if(canApprove){
+   const competing=competingApplications(r);
+   if(competing.length){
+    const impact=make('div',undefined,'lc-next warn'),list=make('ul');
+    impact.append(make('strong','同意後，下列重疊申請將以「未獲分配」結案。'));
+    for(const other of competing){
+     const sharedCodes=codes({assetIds:other.assetIds.filter(id=>r.assetIds.includes(id))});
+     const {name,studentId}=borrowerOf(other);
+     list.append(make('li',`${name}（${studentId}） · ${sharedCodes}｜${range(other.start,other.end)}`));
+    }
+    impact.append(list);
+    card.append(impact);
+   }
+  }
+  if(r.status==='reserved'&&!pending(r))card.append(details('取車',new Date(r.start)>new Date()?`${span(new Date(r.start)-new Date())}後開始`:'已可取車'));
   if(r.pickedUpAt)card.append(details('實際取車',fmt(r.pickedUpAt)));
   if(overdue(r))card.append(make('p',`已逾期 ${span(new Date()-new Date(r.end))}，請聯絡借用人。`,'lc-next warn'));
   if(r.returnedAt)card.append(details('實際歸還',fmt(r.returnedAt)));
@@ -372,12 +407,12 @@ if($('lc-admin')){
   card.append(more);
   const actions=make('div',undefined,'lc-actions'),compareKey=`${panel}:${r.id}`;
   if(r.photos?.length)actions.append(button(ui.compare.has(compareKey)?'收起照片':`比較照片（${r.photos.length} 張）`,()=>{if(ui.compare.has(compareKey))ui.compare.delete(compareKey);else ui.compare.add(compareKey);renderStaff();}));
-  if(r.status==='reserved'&&r.approval==='pending')actions.append(button('同意預約',e=>approve(r,e.currentTarget),''));
+  if(canApprove)actions.append(button('同意預約',e=>approve(r,e.currentTarget),''));
   if(r.status==='reserved')actions.append(button(r.approval==='pending'?'拒絕':'取消預約',()=>toggleForm(`${panel}:cancel:${r.id}`),'danger'));
-  if(r.selfService&&['reserved','in_use'].includes(r.status))actions.append(button('重新產生取還車碼',e=>reissueAccess(r,e.currentTarget),'text-button'));
+  if(['reserved','in_use'].includes(r.status))actions.append(button(r.selfService?'重新產生取還車碼':'產生取還車碼',e=>reissueAccess(r,e.currentTarget),'text-button'));
   if(r.status==='inspection')actions.append(button('完成異常審核',()=>toggleForm(`${panel}:resolve:${r.id}`),''));
   card.append(actions);
-  if(ui.forms.has(`${panel}:cancel:${r.id}`))card.append(staffForm(r,panel,'cancel'));
+  if(r.status==='reserved'&&ui.forms.has(`${panel}:cancel:${r.id}`))card.append(staffForm(r,panel,'cancel'));
   if(ui.forms.has(`${panel}:resolve:${r.id}`))card.append(staffForm(r,panel,'resolve'));
   if(ui.issued.has(r.id))card.append(issuedCode(r));
   if(ui.compare.has(compareKey))card.append(compareStaffPhotos(r));
@@ -385,7 +420,7 @@ if($('lc-admin')){
  }
  async function approve(r,b){const restore=busy(b,'同意中…');if(!await write('approve',{reservationId:r.id},`已同意 ${borrowerOf(r).name} 的預約；社員可在取車時間自行取車。`,`approve:${r.id}`)&&b.isConnected)restore();}
  // A lost phone: the officer issues a new booking code once and sends it on Instagram; the old code stops working.
- async function reissueAccess(r,b){if(!confirm(`要為 ${borrowerOf(r).name} 重新產生取還車碼嗎？舊的碼會立即失效。`))return;const key=Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');const restore=busy(b,'產生中…');if(await write('access',{reservationId:r.id,key},'已產生新的取還車碼；請用 Instagram 私訊傳給本人。',`access:${r.id}:${key}`)){ui.issued.set(r.id,key);renderStaff();}else if(b.isConnected)restore();}
+ async function reissueAccess(r,b){if(!confirm(r.selfService?`要為 ${borrowerOf(r).name} 重新產生取還車碼嗎？舊的碼會立即失效。`:`要為 ${borrowerOf(r).name} 的這筆借用產生取還車碼嗎？`))return;const key=Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');const restore=busy(b,'產生中…');if(await write('access',{reservationId:r.id,key},'已產生新的取還車碼；請用 Instagram 私訊傳給本人。',`access:${r.id}:${key}`)){ui.issued.set(r.id,key);renderStaff();}else if(b.isConnected)restore();}
  function issuedCode(r){const key=ui.issued.get(r.id),box=make('div',undefined,'lc-token-output');box.append(make('strong','新的取還車碼只顯示這一次'),make('p','請用 Instagram 私訊傳給本人，請對方在借車頁「換了手機？」貼上。','fine'),make('code',key,'lc-token-value'));const row=make('div',undefined,'lc-actions');if(navigator.clipboard?.writeText)row.append(button('複製',async()=>{try{await navigator.clipboard.writeText(key);say('lc-admin-message','已複製；傳送後請清除剪貼簿。','ok');}catch{say('lc-admin-message','無法複製，請手動選取。',true);}},''));row.append(button('已傳送，隱藏',()=>{ui.issued.delete(r.id);renderStaff();}));box.append(row);return box;}
  function toggleForm(key){if(ui.forms.has(key))ui.forms.delete(key);else ui.forms.set(key,{reason:'',state:''});renderStaff();setTimeout(()=>document.querySelector(`.lc-panel:not([hidden]) [data-draft="${key}:reason"]`)?.focus(),0);}
  function staffForm(r,panel,action){const key=`${panel}:${action}:${r.id}`,draft=ui.forms.get(key),form=make('form',undefined,'lc-inline-form');const rejecting=action==='cancel'&&r.approval==='pending';form.append(make('h4',rejecting?'拒絕這筆預約':action==='cancel'?'取消這筆預約':'異常審核結案'));
@@ -402,7 +437,7 @@ if($('lc-admin')){
    box.append(row);}
   return box;}
  function fillAsset(a){const f=$('lc-asset-form');f.elements.id.value=a.id;f.elements.code.value=a.code;f.elements.name.value=a.name;f.elements.kind.value=a.kind;f.elements.state.value=a.state;f.elements.minHeight.value=a.minHeight??'';f.elements.maxHeight.value=a.maxHeight??'';f.elements.reason.value='';$('lc-asset-heading').textContent=`編輯 ${a.code}`;scrollTo(f.closest('.lc-form-card'));f.elements.state.focus({preventScroll:true});}
- function fillMember(m){const f=$('lc-member-form');f.elements.id.value=m.id;f.elements.studentId.value=m.studentId;f.elements.name.value=m.name;f.elements.contact.value=m.contact||'';f.elements.validUntil.value=localDateTime(new Date(m.validUntil));f.elements.active.checked=!!m.active;f.elements.reason.value='';$('lc-member-card').hidden=false;$('lc-member-heading').textContent=`編輯 ${m.name}`;clearToken();scrollTo(f.closest('.lc-form-card'));}
+ function fillMember(m){const f=$('lc-member-form');f.elements.id.value=m.id;f.elements.studentId.value=m.studentId;f.elements.name.value=m.name;f.elements.contact.value=m.contact||'';f.elements.active.checked=!!m.active;f.elements.reason.value='';$('lc-member-card').hidden=false;$('lc-member-heading').textContent=`編輯 ${m.name}`;scrollTo(f.closest('.lc-form-card'));}
  $('lc-admin-refresh').addEventListener('click',()=>loadStaff(true));
  for(const b of document.querySelectorAll('#lc-booking-filter button'))b.addEventListener('click',()=>{bookingFilter=b.dataset.status;for(const x of document.querySelectorAll('#lc-booking-filter button'))x.setAttribute('aria-pressed',String(x===b));renderBookings();});
  $('lc-booking-search').addEventListener('input',renderBookings);$('lc-member-search').addEventListener('input',renderMembers);
@@ -410,7 +445,18 @@ if($('lc-admin')){
   $('lc-asset-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.currentTarget,v=Object.fromEntries(new FormData(f));if(!f.reportValidity()||!v.reason?.trim())return;const restore=busy(f.querySelector('button[type=submit]'),'儲存中…');try{const {minHeight,maxHeight,...base}=v,saved=(staff?.assets||[]).find(a=>a.id===v.id),heights={minHeight:v.kind==='bike'&&minHeight?Number(minHeight):null,maxHeight:v.kind==='bike'&&maxHeight?Number(maxHeight):null};if(heights.minHeight&&heights.maxHeight&&heights.minHeight>heights.maxHeight){say('lc-admin-message','適合身高最低不可高於最高。',true);return;}
   // Send the range only when one exists or is being cleared, so saving still works before migration 015.
   const fit=heights.minHeight||heights.maxHeight||saved?.minHeight||saved?.maxHeight?heights:{};if(await write('asset',{...base,...fit,id:v.id||undefined},`${v.code} 已儲存。`))resetAsset();}finally{restore();}});$('lc-asset-reset').addEventListener('click',resetAsset);
- $('lc-member-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.currentTarget;if(!f.reportValidity())return;const v=Object.fromEntries(new FormData(f));v.active=f.elements.active.checked;v.validUntil=taipeiDateTime(v.validUntil).toISOString();const reissue=f.elements.reissue.checked;delete v.reissue;if(!v.id||reissue){const bytes=crypto.getRandomValues(new Uint8Array(32));v.token=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');}const restore=busy(f.querySelector('button[type=submit]'),'儲存中…');try{await adminAction('member',{...v,id:v.id||undefined});clearToken();if(v.token){const box=$('lc-new-token');box.hidden=false;box.append(make('strong',`${v.name} 的資格碼只顯示這一次`),make('p',`請立即以安全方式交給已核對身分的社員。${reissue?'舊碼已失效。':''}`),make('code',v.token,'lc-token-value'));const row=make('div',undefined,'lc-actions');if(navigator.clipboard?.writeText)row.append(button('複製資格碼',async()=>{try{await navigator.clipboard.writeText(v.token);say('lc-admin-message','資格碼已複製；交付後請清除剪貼簿。','ok');}catch{say('lc-admin-message','無法複製，請手動選取。',true);}},''));row.append(button('已交付，隱藏資格碼',clearToken));box.append(row);}resetMember();await loadStaff(true);say('lc-admin-message','借用人資料已儲存。','ok');}catch(err){say('lc-admin-message',`借用人資料儲存失敗：${err.message}`,true);}finally{restore();}});$('lc-member-reset').addEventListener('click',()=>{resetMember();clearToken();});
+ $('lc-member-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const f=e.currentTarget;
+  if(!f.reportValidity())return;
+  const v=Object.fromEntries(new FormData(f));
+  v.active=f.elements.active.checked;
+  const restore=busy(f.querySelector('button[type=submit]'),'儲存中…');
+  try{
+   if(await write('member',v,'借用人資料已儲存。'))resetMember();
+  }finally{restore();}
+ });
+ $('lc-member-reset').addEventListener('click',resetMember);
  $('lc-policy-form').addEventListener('input',()=>policyDirty=true);
  $('lc-policy-form').addEventListener('submit',async e=>{e.preventDefault();if(!guard())return;const v=Object.fromEntries(new FormData(e.currentTarget));const restore=busy(e.currentTarget.querySelector('button[type=submit]'),'發布中…');try{await adminAction('settings',v);policyDirty=false;await loadStaff(true);say('lc-admin-message','取車地點與借車規範已發布；新簽署須使用最新版本。','ok');}catch(err){say('lc-admin-message',`規範儲存失敗：${err.message}`,true);}finally{restore();}});
  $('lc-export').addEventListener('click',async()=>{if(!guard())return;const generation=adminGeneration,restore=busy($('lc-export'),'匯出中…');try{const result=await adminAction('export');if(generation!==adminGeneration||!guard())return;const blob=new Blob([JSON.stringify(result,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=make('a');a.href=url;a.download=`ntut-cycling-lifecycle-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);say('lc-admin-message','完整借還車備份已下載。請妥善保管私人照片與簽署。','ok');}catch(e){say('lc-admin-message',`匯出失敗：${e.message}`,true);}finally{restore();}});

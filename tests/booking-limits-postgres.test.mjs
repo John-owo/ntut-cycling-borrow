@@ -7,6 +7,7 @@ import {buildLifecycleRelease} from '../scripts/lifecycle-release.mjs';
 
 const sql=file=>readFileSync(new URL('../supabase/migrations/'+file,import.meta.url),'utf8');
 const key=()=>randomBytes(32).toString('hex'),iso=ms=>new Date(Date.now()+ms).toISOString(),hour=3600000;
+const allocationMigration='020_competing_booking_applications.sql';
 
 async function setup({install=true,overdue=false}={}){
  const db=new PGlite(),officer=randomUUID(),session=randomUUID();
@@ -14,6 +15,7 @@ async function setup({install=true,overdue=false}={}){
  const as=(role,text,args)=>{const run=queue.then(async()=>{await db.exec(`set role ${role}`);try{return (await db.query(`select ${text} as value`,args)).rows[0].value;}finally{await db.exec('reset role');}});queue=run.catch(()=>{});return run;};
  const rpc=(action,payload={},token=null)=>as('anon','public.lifecycle($1,$2,$3::jsonb)',[action,token,JSON.stringify(payload)]);
  const admin=(action,payload={})=>as('authenticated','public.lifecycle_admin($1,$2::jsonb)',[action,JSON.stringify(payload)]);
+ const photoService=(action,payload,token)=>as('service_role','public.lifecycle_photo_service($1,$2,$3::jsonb)',[action,token,JSON.stringify(payload)]);
  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth;
   create table auth.users(id uuid primary key,email text);
   create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
@@ -31,8 +33,56 @@ async function setup({install=true,overdue=false}={}){
  const policy=(await admin('settings',{location:'QA office',terms:'QA terms'})).settings;
  const bikes=[];for(let i=1;i<=4;i++)bikes.push((await admin('asset',{code:`QA-L${i}`,name:`Synthetic ${i}`,kind:'bike',state:'available',reason:'synthetic'})).asset);
  const apply=async(student,bike,start,end,extra={})=>{const k=key();return {...await rpc('apply',{requestId:randomUUID(),studentId:student,name:`Rider ${student}`,assetIds:[bike.id],start:iso(start),end:iso(end),key:k,accepted:true,termsVersion:policy.termsVersion,...extra}),key:k};};
- return {db,rpc,admin,policy,bikes,apply};
+ return {db,rpc,admin,photoService,policy,bikes,apply};
 }
+
+test('020 allocates the chosen application and retires member-wide keys on every entry point',async()=>{
+ const {db,rpc,admin,photoService,policy,bikes,apply}=await setup({overdue:true});
+ try{
+  const oldKey=key();
+  const profile={studentId:'LEGACY',name:'Legacy rider',contact:'ig',active:true,reason:'Verified'};
+  const member=(await admin('member',{...profile,validUntil:iso(24*hour),token:oldKey})).member;
+  const legacyPayload={requestId:randomUUID(),assetIds:[bikes[0].id],start:iso(10*hour),end:iso(11*hour),accepted:true,termsVersion:policy.termsVersion};
+  const oldBooking=(await rpc('reserve',legacyPayload,oldKey)).reservation;
+  assert.equal(oldBooking.approval,'approved');
+  await db.exec(sql(allocationMigration));
+  assert.match((await rpc('me',{},oldKey)).message,/Invalid member token/);
+  assert.match((await rpc('reserve',legacyPayload,oldKey)).message,/Invalid member token/);
+  await assert.rejects(photoService('read',{id:randomUUID()},oldKey),/Invalid member token/);
+  await assert.rejects(admin('member',{...profile,id:member.id,token:key()}),/Invalid member/);
+  assert.equal((await admin('member',{...profile,id:member.id,contact:''})).member.contact,'');
+  const replacement=key();
+  await admin('access',{requestId:randomUUID(),reservationId:oldBooking.id,key:replacement});
+  assert.deepEqual((await rpc('me',{},replacement)).reservations.map(r=>r.id),[oldBooking.id]);
+  assert.match((await rpc('reserve',legacyPayload,replacement)).message,/Unknown lifecycle action/);
+  assert.match((await apply('BLOCKED',bikes[0],10*hour,11*hour)).message,/Reservation conflict/);
+
+  const kit=(await admin('asset',{code:'QA-KIT',name:'Shared kit',kind:'accessory',state:'available',reason:'synthetic'})).asset;
+  const start=iso(hour),end=iso(2*hour),calendar=()=>rpc('calendar',{start,end});
+  const earlier=await apply('EARLIER',bikes[0],hour,2*hour,{start,end});
+  const chosen=await apply('CHOSEN',bikes[0],hour,2*hour,{assetIds:[bikes[0].id,kit.id],start,end});
+  const accessory=await apply('ACCESSORY',bikes[1],hour,2*hour,{assetIds:[bikes[1].id,kit.id],start,end});
+  const indirect=await apply('INDIRECT',bikes[1],hour,2*hour,{start,end});
+  const adjacent=await apply('ADJACENT',bikes[0],2*hour,3*hour,{start:end});
+  for(const result of [earlier,chosen,accessory,indirect,adjacent]) assert.equal(result.reservation?.approval,'pending',JSON.stringify(result));
+  assert.deepEqual((await calendar()).bookings,[]);
+  const approval={requestId:randomUUID(),reservationId:chosen.reservation.id};
+  assert.equal((await admin('approve',approval)).reservation.approval,'approved');
+  assert.equal((await admin('approve',approval)).reservation.approval,'approved','approval is idempotent');
+  assert.deepEqual((await calendar()).bookings.map(r=>r.id),[chosen.reservation.id]);
+  for(const result of [earlier,accessory]){
+   const [record]=(await rpc('me',{},result.key)).reservations;
+   assert.equal(record.status,'cancelled');assert.equal(record.allocationDeclined,true);
+  }
+  const declined=(await db.query("select reservation_id from private.lifecycle_events where action='allocation_declined'")).rows;
+  assert.deepEqual(new Set(declined.map(r=>r.reservation_id)),new Set([earlier.reservation.id,accessory.reservation.id]));
+  assert.equal(declined.length,2);
+  await assert.rejects(admin('approve',{requestId:randomUUID(),reservationId:earlier.reservation.id}),/does not need approval/);
+  assert.equal((await rpc('me',{},indirect.key)).reservations[0].approval,'pending');
+  assert.equal((await admin('approve',{requestId:randomUUID(),reservationId:adjacent.reservation.id})).reservation.approval,'approved');
+  assert.match((await apply('TOO-LATE',bikes[0],hour,2*hour,{start,end})).message,/Reservation conflict/);
+ }finally{await db.close();}
+});
 
 test('018 requires accepting the current borrow terms on every booking and records it',async()=>{
  const {db,rpc,admin,policy,bikes,apply}=await setup();

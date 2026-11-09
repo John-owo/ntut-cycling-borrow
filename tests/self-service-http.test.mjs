@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, basename } from 'node:path';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { deflateSync } from 'node:zlib';
 import { createApp } from '../server/app.mjs';
@@ -45,11 +45,11 @@ test('SQLite self-service booking: applicant key, officer approval, scoped acces
     assert.deepEqual(first.reservation.borrower, { studentId: 'T111', name: '自助社員', contact: '' });
     assert.equal(JSON.stringify(first).includes(k1), false); assert.equal(JSON.stringify(first).includes('accessHash'), false);
     assert.equal((await member('apply', null, apply)).reservation.id, first.reservation.id, 'retry is idempotent');
-    assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), key: k2 })).status, 409, 'slot already held');
+    assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), key: k2 })).status, 409, 'the same student may not apply for the same slot twice');
     assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), assetIds: [other.id], key: k2 })).status, 409, 'own bookings may not overlap');
     assert.equal((await member('apply', null, { ...apply, requestId: randomUUID(), studentId: 'bad id!', key: k2 })).status, 400);
     const calendar = await member('calendar', null, { start: new Date().toISOString(), end: new Date(Date.now() + 86400000).toISOString() });
-    assert.equal(calendar.bookings[0].pending, true); assert.equal(JSON.stringify(calendar).includes('自助社員'), false);
+    assert.deepEqual(calendar.bookings, []); assert.equal(JSON.stringify(calendar).includes('自助社員'), false);
     const mine = await member('me', k1);
     assert.equal(mine.reservations.length, 1); assert.equal(mine.reservations[0].id, first.reservation.id);
     assert.equal((await member('reserve', k1, { requestId: randomUUID(), assetIds: [other.id], start: new Date(Date.now() + 7200000).toISOString(), end: new Date(Date.now() + 9000000).toISOString(), ...consent })).status, 403);
@@ -81,8 +81,17 @@ test('SQLite self-service booking: applicant key, officer approval, scoped acces
     assert.equal((await member('photo_read', k4, { id: photos[0].id })).status, 404);
     assert.equal((await member('return', k4, { requestId: randomUUID(), reservationId: first.reservation.id, checks: all, notes: '', abnormal: false })).status, 404);
     assert.equal((await member('cancel', k4, { requestId: randomUUID(), reservationId: second.reservation.id, reason: '改期' })).reservation.status, 'cancelled');
-    for (const slot of ['left', 'right', 'drivetrain', 'damage']) assert.equal((await member('photo', k3, { ...photo(slot), phase: 'return' })).status, 200);
-    assert.equal((await member('return', k3, { requestId: randomUUID(), reservationId: first.reservation.id, checks: all, notes: '', abnormal: false })).reservation.status, 'returned');
+    // Simulate an in-use legacy record with a member-wide key and no booking key.
+    const oldKey = key(), replacement = key();
+    app.db.prepare('UPDATE lifecycle_members SET tokenHash=? WHERE id=?').run(createHash('sha256').update(oldKey).digest('hex'), first.reservation.memberId);
+    app.db.prepare('UPDATE lifecycle_reservations SET accessHash=NULL WHERE id=?').run(first.reservation.id);
+    assert.equal((await member('me', oldKey)).status, 401);
+    assert.equal((await member('photo_read', oldKey, { id: photos[0].id })).status, 401);
+    assert.equal((await staff('access', { requestId: randomUUID(), reservationId: first.reservation.id, key: oldKey })).status, 409);
+    assert.equal((await staff('access', { requestId: randomUUID(), reservationId: first.reservation.id, key: replacement })).status, 200);
+    assert.equal((await member('me', replacement)).reservations[0].status, 'in_use');
+    for (const slot of ['left', 'right', 'drivetrain', 'damage']) assert.equal((await member('photo', replacement, { ...photo(slot), phase: 'return' })).status, 200);
+    assert.equal((await member('return', replacement, { requestId: randomUUID(), reservationId: first.reservation.id, checks: all, notes: '', abnormal: false })).reservation.status, 'returned');
     assert.equal((await staff('access', { requestId: randomUUID(), reservationId: first.reservation.id, key: key() })).status, 409, 'closed bookings keep their key');
     // Officers can still block a student ID.
     const blocked = list.members.find(m => m.studentId === 'T111');
