@@ -42,14 +42,6 @@ test('SQLite booking: terms consent on every booking, two non-overlapping bookin
     assert.equal((await apply('T2', bikes[2], 2 * hour, 4 * hour)).status, 200, 'another student is unaffected');
     assert.equal((await member('cancel', second.key, { requestId: randomUUID(), reservationId: second.reservation.id, reason: '改期' })).reservation.status, 'cancelled');
     assert.equal((await apply('T1', bikes[0], 6 * hour, 7 * hour)).status, 200, 'a cancelled booking frees its slot; same bike is fine when times do not overlap');
-
-    const token = key();
-    await staff('member', { studentId: 'M1', name: '社員一', contact: 'ig', validUntil: at(9 * 24 * hour), active: true, token, reason: '核對' });
-    const reserve = (bike, start, end, extra = {}) => member('reserve', token, { requestId: randomUUID(), assetIds: [bike.id], start: at(start), end: at(end), accepted: true, termsVersion: policy.termsVersion, ...extra });
-    assert.equal((await reserve(bikes[3], hour, 2 * hour, { accepted: false })).status, 409);
-    assert.equal((await reserve(bikes[3], hour, 2 * hour)).reservation.consent.termsVersion, policy.termsVersion);
-    assert.equal((await reserve(bikes[3], 10 * hour, 11 * hour)).status, 200);
-    assert.equal((await reserve(bikes[3], 12 * hour, 13 * hour)).status, 409);
   } finally { await app.close?.(); app.server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

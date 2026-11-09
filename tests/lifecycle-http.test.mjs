@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, basename } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
 import { deflateSync } from 'node:zlib';
 import { createApp } from '../server/app.mjs';
 
@@ -56,31 +55,34 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     assert.equal((await member('calendar', undefined, { start: new Date().toISOString(), end: new Date(Date.now() + 86400000).toISOString() })).assets.find(a => a.id === asset.id).maxHeight, 178);
     const t1 = randomBytes(32).toString('hex'), t2 = randomBytes(32).toString('hex');
     const until = new Date(Date.now() + 7 * 86400000).toISOString();
-    const member1 = (await staff('member', { studentId: 'S001', name: '測試社員一', contact: 'test', validUntil: until, active: true, token: t1, reason: '測試核對' })).member;
-    await staff('member', { studentId: 'S002', name: '測試社員二', contact: 'test', validUntil: until, active: true, token: t2, reason: '測試核對' });
-    assert.equal((await member('reserve', t1, { requestId: uid(), assetIds: [asset.id], start: new Date(Date.now() + 500).toISOString(), end: new Date(Date.now() + 3600000).toISOString() })).status, 409);
+    const member1 = (await staff('member', { studentId: 'S001', name: '測試社員一', contact: 'test', validUntil: until, active: true, reason: '測試核對' })).member;
+    assert.equal((await member('apply', null, { requestId: uid(), studentId: member1.studentId, name: member1.name, key: t1, assetIds: [asset.id], start: new Date(Date.now() + 500).toISOString(), end: new Date(Date.now() + 3600000).toISOString() })).status, 409);
     const settings = (await staff('settings', { location: '測試社辦', terms: '測試借車規範' })).settings;
     assert.deepEqual(Object.keys(settings).sort(), ['bookingConsent', 'location', 'photoStorage', 'terms', 'termsVersion']);
     const consent = { accepted: true, termsVersion: settings.termsVersion };
     assert.equal((await staff('settings', { location: '測試社辦', terms: '測試借車規範', extra: 'x' })).status, 400);
     assert.equal((await staff('settings', { location: '測試社辦' })).status, 400);
-    const startAt = new Date(Date.now() + 700).toISOString(), endAt = new Date(Date.now() + 3600000).toISOString();
-    const reserve = { requestId: uid(), assetIds: [asset.id, accessory.id], start: startAt, end: endAt, ...consent };
-    const first = await member('reserve', t1, reserve);
+    const startAt = new Date(Date.now() + 3600000).toISOString(), endAt = new Date(Date.now() + 7200000).toISOString();
+    const application = { requestId: uid(), studentId: member1.studentId, name: member1.name, key: t1, assetIds: [asset.id, accessory.id], start: startAt, end: endAt, ...consent };
+    const first = await member('apply', null, application);
     assert.equal(first.status, 200); assert.equal(first.reservation.status, 'reserved');
-    assert.deepEqual(first.reservation.borrower, { studentId: 'S001', name: '測試社員一', contact: 'test' });
+    assert.deepEqual(first.reservation.borrower, { studentId: 'S001', name: '測試社員一', contact: '' });
+    assert.equal((await staff('approve', { requestId: uid(), reservationId: first.reservation.id })).reservation.approval, 'approved');
     assert.equal((await call('/api/register', { studentId: 'S001', name: '測試社員一', contactType: 'line', contact: 'test', purpose: 'group_ride', token: randomBytes(32).toString('hex') })).status, 410);
     assert.equal((await call('/api/me', { token: randomBytes(32).toString('hex') })).status, 410);
     for (const [path, body] of [['/api/admin/action', { id: 1, action: 'lend' }], ['/api/admin/confirm-schedule', { id: 1 }], ['/api/admin/borrowed', { borrowed: 1, expectedBorrowed: 0, expectedOpening: 0, requestId: uid(), reason: 'x' }]]) assert.equal((await call(path, body, true)).status, 410, path);
     assert.equal((await call('/api/admin/action', { id: 1, action: 'lend' })).status, 401, 'closed officer routes still require login');
-    assert.equal((await member('reserve', t1, reserve)).reservation.id, first.reservation.id);
-    assert.equal((await member('reserve', t1, { ...reserve, end: new Date(Date.now() + 7200000).toISOString() })).status, 409);
-    assert.equal((await member('reserve', t2, { requestId: uid(), assetIds: [asset.id], start: startAt, end: endAt, ...consent })).status, 409);
-    assert.equal((await member('reserve', t2, { requestId: uid(), assetIds: [accessory.id], start: startAt, end: endAt, ...consent })).status, 409);
+    assert.equal((await member('apply', null, application)).reservation.id, first.reservation.id);
+    assert.equal((await member('apply', null, { ...application, end: new Date(Date.now() + 7200000).toISOString() })).status, 409);
+    assert.equal((await member('apply', null, { requestId: uid(), studentId: 'S002', name: '測試社員二', key: t2, assetIds: [asset.id], start: startAt, end: endAt, ...consent })).status, 409);
+    assert.equal((await member('apply', null, { requestId: uid(), studentId: 'S002', name: '測試社員二', key: t2, assetIds: [accessory.id], start: startAt, end: endAt, ...consent })).status, 409);
+    const second = await member('apply', null, { ...application, requestId: uid(), key: t2, start: endAt, end: new Date(Date.parse(endAt) + 3600000).toISOString() });
+    assert.equal(second.status, 200, JSON.stringify(second));
+    assert.equal((await member('cancel', t2, { requestId: uid(), reservationId: second.reservation.id, reason: '改期' })).status, 200);
     const calendar = await member('calendar', undefined, { start: new Date(Date.now() - 1000).toISOString(), end: endAt });
     assert.equal(calendar.bookings[0].status, 'reserved'); assert.equal(JSON.stringify(calendar).includes(member1.studentId), false);
     assert.equal((await member('pickup', t1, { requestId: uid(), reservationId: first.reservation.id, checks: all, notes: '', signature: { name: member1.name, accepted: true, termsVersion: settings.termsVersion, image: `data:image/png;base64,${png}` } })).status, 409);
-    await delay(Math.max(0, Date.parse(startAt) - Date.now() + 30));
+    app.db.prepare('UPDATE lifecycle_reservations SET start=? WHERE id=?').run(new Date(Date.now() - 1000).toISOString(), first.reservation.id);
     // A genuine 4.8 MB camera-sized PNG exercises JSON limits and base64 parsing.
     const cameraPng=drawnPng(1200,1000,true);assert.ok(Buffer.from(cameraPng,'base64').length>3*1024*1024);
     const upload = slot => ({ requestId: uid(), reservationId: first.reservation.id, assetId: asset.id, phase: 'pickup', slot, mime: 'image/png', data: slot==='left'?cameraPng:png });
@@ -103,6 +105,7 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     assert.equal((await call('/api/summary')).status, 410);
     assert.equal((await call('/api/admin/records', undefined, true)).summary.borrowed, 0, 'numbered loans stay out of the legacy count');
     assert.equal((await member('pickup', t1, pickup)).reservation.pickedUpAt, begun.reservation.pickedUpAt);
+    assert.equal((await member('pickup', t2, pickup)).status, 404, 'another key for the same student cannot replay the pickup receipt');
     const read = await member('photo_read', t1, { id: photo.photo.id }); assert.equal(read.photo.data, cameraPng);
     assert.equal((await member('return', t1, { requestId: uid(), reservationId: first.reservation.id, checks: all, notes: '', abnormal: false })).status, 409);
     await staff('member', { id: member1.id, studentId: 'S001', name: '測試社員一', contact: 'test', validUntil: until, active: false, reason: '期中停權' });
@@ -111,17 +114,17 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
     const returned = await member('return', t1, back);
     assert.equal(returned.reservation.status, 'inspection'); assert.equal(returned.reservation.photos.length, 8);
     assert.equal((await member('return', t1, back)).reservation.returnedAt, returned.reservation.returnedAt);
-    assert.equal((await member('reserve', t2, { requestId: uid(), assetIds: [asset.id], start: new Date(Date.now() + 1000).toISOString(), end: new Date(Date.now() + 3600000).toISOString(), ...consent })).status, 409);
+    assert.equal((await member('apply', null, { requestId: uid(), studentId: 'S002', name: '測試社員二', key: t2, assetIds: [asset.id], start: new Date(Date.now() + 1000).toISOString(), end: new Date(Date.now() + 3600000).toISOString(), ...consent })).status, 409);
     assert.equal((await staff('list')).notifications.filter(n => !n.resolvedAt).length, 1);
     assert.equal((await staff('resolve', { requestId: uid(), reservationId: first.reservation.id, reason: '測試完成檢查', state: 'available' })).reservation.status, 'returned');
     assert.equal((await staff('asset', { id: asset.id, code: 'B-RENAMED', name: '測試車', kind: 'bike', state: 'available', reason: '測試變更歷史編號' })).status, 409);
     assert.equal((await staff('asset', { id: asset.id, code: 'B-01', name: '測試車', kind: 'accessory', state: 'available', reason: '測試變更歷史類型' })).status, 409);
     assert.equal((await staff('list')).notifications.filter(n => !n.resolvedAt).length, 0);
     assert.equal((await member('me', t1)).reservations[0].photos.length, 8);
-    assert.equal((await member('me', t2)).reservations.length, 0);
+    assert.deepEqual((await member('me', t2)).reservations.map(r => r.id), [second.reservation.id]);
     await app.close(); await start();
     assert.equal((await member('photo_read', t1, { id: photo.photo.id })).photo.data, cameraPng);
-    assert.equal((await member('reserve', t1, reserve)).reservation.id, first.reservation.id);
+    assert.equal((await member('apply', null, application)).reservation.id, first.reservation.id);
     bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
     const backup = await call('/api/admin/export', undefined, true);
     assert.equal(backup.lifecycle.photos.length, 8);
@@ -130,7 +133,7 @@ test('SQLite HTTP lifecycle persists gated reservation, immutable photos, abnorm
   } finally { await app?.close(); cleanupTestDir(dir, 'bike-lifecycle-'); }
 });
 
-test('SQLite HTTP serializes competing reservations and blocks adjacent pickup during overdue use', async () => {
+test('SQLite HTTP serializes competing approvals, closes direct conflicts and blocks adjacent pickup during overdue use', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'bike-lifecycle-race-'));
   let app, base, bearer;
   const call = async (path, body, admin = false) => { const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(admin ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) }); return { status: response.status, ...await response.json() }; };
@@ -143,25 +146,48 @@ test('SQLite HTTP serializes competing reservations and blocks adjacent pickup d
     app.addAdmin('officer', 'test-password-123'); bearer = (await call('/api/admin/login', { username: 'officer', password: 'test-password-123' })).token;
     const asset = (await staff('asset', { code: 'B-02', name: '測試車', kind: 'bike', state: 'available', reason: '盤點' })).asset;
     const termsVersion = (await staff('settings', { location: '測試', instructions: '測試', terms: '測試規範' })).settings.termsVersion;
-    const t1 = randomBytes(32).toString('hex'), t2 = randomBytes(32).toString('hex');
-    for (const [studentId, name, token] of [['R001', '社員甲', t1], ['R002', '社員乙', t2]]) await staff('member', { studentId, name, contact: 'test', validUntil: new Date(Date.now() + 86400000).toISOString(), active: true, token, reason: '測試' });
-    const startAt = new Date(Date.now() + 300).toISOString(), endAt = new Date(Date.now() + 1800).toISOString(), after = new Date(Date.now() + 6000).toISOString();
-    const racers = await Promise.all([member('reserve', t1, { requestId: randomUUID(), assetIds: [asset.id], start: startAt, end: endAt, accepted: true, termsVersion }), member('reserve', t2, { requestId: randomUUID(), assetIds: [asset.id], start: startAt, end: endAt, accepted: true, termsVersion })]);
-    assert.deepEqual(racers.map(r => r.status).sort(), [200, 409]);
-    const winner = racers[0].status === 200 ? { token: t1, name: '社員甲', reservation: racers[0].reservation } : { token: t2, name: '社員乙', reservation: racers[1].reservation };
-    const loser = racers[0].status === 200 ? { token: t2, name: '社員乙' } : { token: t1, name: '社員甲' };
-    const adjacent = await member('reserve', loser.token, { requestId: randomUUID(), assetIds: [asset.id], start: endAt, end: after, accepted: true, termsVersion });
-    assert.equal(adjacent.status, 200);
-    await delay(Math.max(0, Date.parse(startAt) - Date.now() + 20));
+    const other = (await staff('asset', { code: 'B-03', name: '另一台車', kind: 'bike', state: 'available', reason: '盤點' })).asset;
+    const kit = (await staff('asset', { code: 'K-01', name: '配件', kind: 'accessory', state: 'available', reason: '盤點' })).asset;
+    const startAt = new Date(Date.now() + 3600000).toISOString(), endAt = new Date(Date.now() + 7200000).toISOString(), after = new Date(Date.now() + 10800000).toISOString();
+    const apply = async (studentId, name, assetIds, start, end) => {
+      const token = randomBytes(32).toString('hex');
+      const result = await member('apply', null, { requestId: randomUUID(), studentId, name, key: token, assetIds, start, end, accepted: true, termsVersion });
+      assert.equal(result.status, 200, JSON.stringify(result));
+      return { token, name, reservation: result.reservation };
+    };
+    const racers = await Promise.all([
+      apply('R001', '社員甲', [asset.id, kit.id], startAt, endAt),
+      apply('R002', '社員乙', [asset.id, kit.id], startAt, endAt),
+    ]);
+    const kitConflict = await apply('R003', '社員丙', [other.id, kit.id], startAt, endAt);
+    const transitive = await apply('R004', '社員丁', [other.id], startAt, endAt);
+    const adjacent = await apply('R005', '社員戊', [asset.id], endAt, after);
+    const approve = r => staff('approve', { requestId: randomUUID(), reservationId: r.reservation.id });
+    const approvals = await Promise.all(racers.map(approve));
+    assert.deepEqual(approvals.map(r => r.status).sort(), [200, 409]);
+    const winningIndex = approvals.findIndex(r => r.status === 200);
+    const winner = racers[winningIndex], loser = racers[1 - winningIndex];
+    for (const { token } of [loser, kitConflict]) {
+      const [record] = (await member('me', token)).reservations;
+      assert.equal(record.status, 'cancelled');
+      assert.equal(record.allocationDeclined, true);
+    }
+    assert.equal((await member('me', transitive.token)).reservations[0].approval, 'pending');
+    assert.equal((await approve(adjacent)).status, 200);
+    const events = (await staff('list')).events.filter(e => e.action === 'allocation_declined');
+    assert.deepEqual(new Set(events.map(e => e.reservationId)), new Set([loser.reservation.id, kitConflict.reservation.id]));
+    app.db.prepare('UPDATE lifecycle_reservations SET start=? WHERE id=?').run(new Date(Date.now() - 2000).toISOString(), winner.reservation.id);
     for (const slot of ['left', 'right', 'drivetrain', 'damage']) assert.equal((await member('photo', winner.token, { requestId: randomUUID(), reservationId: winner.reservation.id, assetId: asset.id, phase: 'pickup', slot, mime: 'image/png', data: photoData })).status, 200);
     const sign = name => ({ name, accepted: true, termsVersion, image: `data:image/png;base64,${photoData}` });
     assert.equal((await member('pickup', winner.token, { requestId: randomUUID(), reservationId: winner.reservation.id, checks: all, notes: '', signature: sign(winner.name) })).status, 200);
-    await delay(Math.max(0, Date.parse(endAt) - Date.now() + 20));
-    for (const slot of ['left', 'right', 'drivetrain', 'damage']) assert.equal((await member('photo', loser.token, { requestId: randomUUID(), reservationId: adjacent.reservation.id, assetId: asset.id, phase: 'pickup', slot, mime: 'image/png', data: photoData })).status, 200);
-    assert.equal((await member('pickup', loser.token, { requestId: randomUUID(), reservationId: adjacent.reservation.id, checks: all, notes: '', signature: sign(loser.name) })).status, 409);
+    const boundary = new Date(Date.now() - 1000).toISOString();
+    app.db.prepare('UPDATE lifecycle_reservations SET end=? WHERE id=?').run(boundary, winner.reservation.id);
+    app.db.prepare('UPDATE lifecycle_reservations SET start=? WHERE id=?').run(boundary, adjacent.reservation.id);
+    for (const slot of ['left', 'right', 'drivetrain', 'damage']) assert.equal((await member('photo', adjacent.token, { requestId: randomUUID(), reservationId: adjacent.reservation.id, assetId: asset.id, phase: 'pickup', slot, mime: 'image/png', data: photoData })).status, 200);
+    assert.equal((await member('pickup', adjacent.token, { requestId: randomUUID(), reservationId: adjacent.reservation.id, checks: all, notes: '', signature: sign(adjacent.name) })).status, 409);
     for (const slot of ['left', 'right', 'drivetrain', 'damage']) assert.equal((await member('photo', winner.token, { requestId: randomUUID(), reservationId: winner.reservation.id, assetId: asset.id, phase: 'return', slot, mime: 'image/png', data: photoData })).status, 200);
     assert.equal((await member('return', winner.token, { requestId: randomUUID(), reservationId: winner.reservation.id, checks: all, notes: '', abnormal: false })).status, 200);
-    assert.equal((await member('pickup', loser.token, { requestId: randomUUID(), reservationId: adjacent.reservation.id, checks: all, notes: '', signature: sign(loser.name) })).status, 200);
+    assert.equal((await member('pickup', adjacent.token, { requestId: randomUUID(), reservationId: adjacent.reservation.id, checks: all, notes: '', signature: sign(adjacent.name) })).status, 200);
   } finally { await app?.close(); cleanupTestDir(dir, 'bike-lifecycle-race-'); }
 });
 
@@ -179,17 +205,23 @@ test('SQLite photo budget counts stored photos and protects the return photos of
     for (const code of ['B-ONE', 'B-TWO', 'B-THREE']) bikes.push((await staff('asset', { code, name: `容量車 ${code}`, kind: 'bike', state: 'available', reason: '盤點完成' })).asset);
     const termsVersion = (await staff('settings', { location: '測試', instructions: '測試', terms: '測試規範' })).settings.termsVersion;
     const tokens = [], validUntil = new Date(Date.now() + 86400000).toISOString();
-    for (let i = 1; i <= 3; i++) { tokens.push(randomBytes(32).toString('hex')); await staff('member', { studentId: `BUDGET${i}`, name: `容量測試${i}`, contact: 'test', validUntil, active: true, token: tokens[i - 1], reason: '測試' }); }
+    for (let i = 1; i <= 3; i++) { tokens.push(randomBytes(32).toString('hex')); await staff('member', { studentId: `BUDGET${i}`, name: `容量測試${i}`, contact: 'test', validUntil, active: true, reason: '測試' }); }
     // Metadata-only synthetic history exercises capacity arithmetic without allocating huge image files.
     const historyId = randomUUID(), past = new Date(Date.now() - 86400000).toISOString(), owner = (await staff('list')).members[0];
     app.db.prepare("INSERT INTO lifecycle_reservations(id,memberId,borrower,start,end,status,createdAt,returnedAt) VALUES(?,?,?,?,?,'returned',?,?)").run(historyId, owner.id, JSON.stringify({ studentId: owner.studentId, name: owner.name, contact: owner.contact }), past, past, past, past);
     const synthetic = (reservationId, assetId, phase, slot, size) => app.db.prepare('INSERT INTO lifecycle_photos VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), reservationId, assetId, phase, slot, 'image/jpeg', size, 'synthetic', new Date().toISOString(), Buffer.of(1));
     synthetic(historyId, bikes[0].id, 'return', 'left', 96 * MiB);
-    const start = new Date(Date.now() + 300).toISOString(), end = new Date(Date.now() + 3600000).toISOString();
+    const start = new Date(Date.now() + 3600000).toISOString(), end = new Date(Date.now() + 7200000).toISOString();
     const booked = [];
-    for (let i = 0; i < 3; i++) { const result = await member('reserve', tokens[i], { requestId: randomUUID(), assetIds: [bikes[i].id], start, end, accepted: true, termsVersion }); assert.equal(result.status, 200, 'future bookings reserve no photo space'); booked.push(result.reservation); }
+    for (let i = 0; i < 3; i++) {
+      const result = await member('apply', null, { requestId: randomUUID(), studentId: 'BUDGET' + (i + 1), name: '容量測試' + (i + 1), key: tokens[i], assetIds: [bikes[i].id], start, end, accepted: true, termsVersion });
+      assert.equal(result.status, 200, 'future bookings reserve no photo space');
+      assert.equal((await staff('approve', { requestId: randomUUID(), reservationId: result.reservation.id })).status, 200);
+      booked.push(result.reservation);
+    }
     assert.deepEqual((await staff('list')).storage, { usedBytes: 96 * MiB, reservedBytes: 0, budgetBytes: 192 * MiB, maxPhotoBytes: 8 * MiB, backend: 'database' });
-    await delay(Math.max(0, Date.parse(start) - Date.now() + 20));
+    const pickupStart = new Date(Date.now() - 1000).toISOString();
+    for (const { id } of booked) app.db.prepare('UPDATE lifecycle_reservations SET start=? WHERE id=?').run(pickupStart, id);
     for (const slot of ['left', 'right', 'drivetrain', 'damage']) synthetic(booked[0].id, bikes[0].id, 'pickup', slot, 8 * MiB);
     const pickup = { requestId: randomUUID(), reservationId: booked[0].id, checks: all, notes: '', signature: { name: '容量測試1', accepted: true, termsVersion, image: `data:image/png;base64,${png}` } };
     assert.equal((await member('pickup', tokens[0], pickup)).status, 200);
